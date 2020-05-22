@@ -103,6 +103,27 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	tearDown(t)
 }
 
+func TestFlushAndGet(t *testing.T) {
+	setUp(t)
+
+	mt := Memtable()
+	mt.Write([]byte{0}, []byte{0})
+	mt.Write([]byte{1}, []byte{1})
+
+	level := Level{blockSize: 4, sstSize: 8}
+	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
+	ssts, _ := Flush(options, level, mt)
+
+	sst, _ := Open(ssts[0].file)
+  value, _ := sst.Get([]byte{1})
+
+  if Compare([]byte{1}, value) != EQUAL {
+    t.Errorf("Expected sst get to produce %q, got %q", []byte{1}, value)
+  }
+
+  tearDown(t)
+}
+
 func setUp(t *testing.T) {
 	if os.Mkdir(TEST_DIR, os.ModeDir|os.ModePerm) != nil {
 		t.Errorf("Failed to setUp by creating directory: %s", TEST_DIR)

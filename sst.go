@@ -20,6 +20,56 @@ type sst struct {
 	blocks []*block
 }
 
+func (sst *sst) Get(key []byte) ([]byte, error) {
+	var block *block
+	for _, b := range sst.blocks {
+		if Compare(key, b.start) == LESS_THAN {
+			break
+		}
+		block = b
+	}
+
+	if block == nil {
+		return nil, nil
+	}
+
+	f, err := os.Open(sst.file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	f.Seek(int64(block.offset), io.SeekStart)
+	length := make([]byte, 1)
+	for {
+		_, err = f.Read(length)
+		if err != nil {
+			return nil, err
+		}
+		k := make([]byte, length[0])
+		_, err = f.Read(k)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = f.Read(length)
+		if Compare(key, k) == EQUAL {
+			v := make([]byte, length[0])
+			_, err = f.Read(v)
+			if err != nil {
+				return nil, err
+			}
+
+			return v, nil
+		} else {
+			_, err := f.Seek(int64(length[0]), io.SeekCurrent)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+}
+
 func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 	if mt == nil {
 		return nil, errors.New("unable to flush nil memtable")
