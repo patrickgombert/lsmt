@@ -7,11 +7,6 @@ const (
 	BLACK color = 1
 )
 
-type pair struct {
-	key   []byte
-	value []byte
-}
-
 type persistentNode interface {
 	getColor() color
 	getPair() pair
@@ -56,7 +51,7 @@ type memtable struct {
 	sortedMap *persistentSortedMap
 }
 
-type iterator struct {
+type memtableIterator struct {
 	init  bool
 	stack []persistentNode
 	end   []byte
@@ -319,53 +314,58 @@ func (memtable *memtable) Write(key, value []byte) {
 	}
 }
 
-func (memtable *memtable) Iterator(start, end []byte) *iterator {
+func (memtable *memtable) Iterator(start, end []byte) *memtableIterator {
 	stack := make([]persistentNode, 0)
 	node := memtable.sortedMap.root
 	if node == nil {
-		return &iterator{init: false, stack: stack, end: end}
+		return &memtableIterator{init: false, stack: stack, end: end}
 	}
 	for Compare(start, node.getPair().key) == GREATER_THAN {
 		if node.getRight() == nil {
-			return &iterator{init: false, stack: stack, end: end}
+			return &memtableIterator{init: false, stack: stack, end: end}
 		}
 	}
 	stack = appendStack(start, node, stack)
-	return &iterator{init: false, stack: stack, end: end}
+	return &memtableIterator{init: false, stack: stack, end: end}
 }
 
-func (iter *iterator) Next() bool {
+func (iter *memtableIterator) Next() (bool, error) {
 	if len(iter.stack) == 0 {
-		return false
+		return false, nil
 	}
 	if !iter.init {
 		iter.init = true
-		return true
+		return true, nil
 	}
 
 	idx := len(iter.stack) - 1
 	node := iter.stack[idx]
 	iter.stack = appendStack(nil, node.getRight(), iter.stack[:idx])
 	if len(iter.stack) == 0 {
-		return false
+		return false, nil
 	} else {
 		idx = len(iter.stack) - 1
 		node = iter.stack[idx]
 		if Compare(node.getPair().key, iter.end) == GREATER_THAN {
 			iter.stack = make([]persistentNode, 0)
-			return false
+			return false, nil
 		} else {
-			return true
+			return true, nil
 		}
 	}
 }
 
-func (iter *iterator) Get() ([]byte, []byte) {
+func (iter *memtableIterator) Get() (*pair, error) {
 	if len(iter.stack) == 0 {
 		return nil, nil
 	}
 	pair := iter.stack[len(iter.stack)-1].getPair()
-	return pair.key, pair.value
+	return &pair, nil
+}
+
+func (iter *memtableIterator) Close() error {
+	iter.stack = []persistentNode{}
+	return nil
 }
 
 func addNode(root persistentNode, key, value []byte) (persistentNode, bool) {

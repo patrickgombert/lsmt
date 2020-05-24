@@ -47,11 +47,14 @@ func TestEmptyIterator(t *testing.T) {
 	mt := Memtable()
 
 	iter := mt.Iterator([]byte{0}, []byte{1})
-	k, v := iter.Get()
-	if k != nil || v != nil {
-		t.Errorf("Expected nil : nil but got %q : %q", k, v)
+	defer iter.Close()
+
+	pair, _ := iter.Get()
+	if pair != nil {
+		t.Errorf("Expected nil : nil but got %q : %q", pair.key, pair.value)
 	}
-	if iter.Next() {
+	next, _ := iter.Next()
+	if next {
 		t.Error("Expected empty iterator to not have Next(), but had Next()")
 	}
 }
@@ -64,6 +67,7 @@ func TestIteratorFromStartAndDoesNotHitEndKey(t *testing.T) {
 	mt.Write([]byte{0, 1}, []byte{0, 1})
 
 	iter := mt.Iterator([]byte{0, 0}, []byte{1, 1, 1, 1})
+	defer iter.Close()
 	compareNext(iter, true, t)
 	compareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
 	compareNext(iter, true, t)
@@ -81,12 +85,28 @@ func TestIteratorFromStartDoesHitEndKey(t *testing.T) {
 	mt.Write([]byte{0, 1}, []byte{0, 1})
 
 	iter := mt.Iterator([]byte{}, []byte{1, 1})
+	defer iter.Close()
 	compareNext(iter, true, t)
 	compareGet(iter, []byte{0}, []byte{0}, t)
 	compareNext(iter, true, t)
 	compareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
 	compareNext(iter, true, t)
 	compareGet(iter, []byte{1, 1}, []byte{1, 1}, t)
+	compareNext(iter, false, t)
+}
+
+func TestIteratorPastStart(t *testing.T) {
+	mt := Memtable()
+	mt.Write([]byte{0}, []byte{0})
+	mt.Write([]byte{1}, []byte{1})
+	mt.Write([]byte{2}, []byte{2})
+
+	iter := mt.Iterator([]byte{1}, []byte{3})
+	defer iter.Close()
+	compareNext(iter, true, t)
+	compareGet(iter, []byte{1}, []byte{1}, t)
+	compareNext(iter, true, t)
+	compareGet(iter, []byte{2}, []byte{2}, t)
 	compareNext(iter, false, t)
 }
 
@@ -97,18 +117,4 @@ func randomBytes(minSize, maxSize int) []byte {
 		ret[i] = byte(rand.Intn(8))
 	}
 	return ret
-}
-
-func compareGet(iter *iterator, key, value []byte, t *testing.T) {
-	k, v := iter.Get()
-	if Compare(k, key) != EQUAL || Compare(v, value) != EQUAL {
-		t.Errorf("Expected Get() to produce %q : %q, but got %q : %q", key, value, k, v)
-	}
-}
-
-func compareNext(iter *iterator, expected bool, t *testing.T) {
-	actual := iter.Next()
-	if actual != expected {
-		t.Errorf("Expected Next() to produce %t, but got %t.", expected, actual)
-	}
 }

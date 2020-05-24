@@ -24,6 +24,17 @@ type lsmt struct {
 	inactiveMemtables []*memtable
 }
 
+type pair struct {
+	key   []byte
+	value []byte
+}
+
+type iterator interface {
+	Next() (bool, error)
+	Get() (*pair, error)
+	Close() error
+}
+
 func Lsmt(options Options) (*lsmt, error) {
 	err := options.validate()
 	if err != nil {

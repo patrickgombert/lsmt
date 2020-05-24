@@ -16,8 +16,21 @@ type block struct {
 }
 
 type sst struct {
-	file   string
-	blocks []*block
+	file       string
+	blocks     []*block
+	metaOffset uint64
+}
+
+type sstIterator struct {
+	init       bool
+	f          *os.File
+	bytesRead  uint64
+	metaOffset uint64
+	key        []byte
+	value      []byte
+	start      []byte
+	end        []byte
+	closed     bool
 }
 
 func (sst *sst) Get(key []byte) ([]byte, error) {
@@ -70,6 +83,136 @@ func (sst *sst) Get(key []byte) ([]byte, error) {
 	}
 }
 
+func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
+	f, err := os.Open(sst.file)
+	if err != nil {
+		return nil, err
+	}
+
+	startBlock := sst.blocks[0]
+	for _, block := range sst.blocks[1:] {
+		if Compare(start, block.start) == LESS_THAN {
+			break
+		}
+		startBlock = block
+	}
+
+	f.Seek(int64(startBlock.offset), io.SeekStart)
+	bytesRead := startBlock.offset
+	length := make([]byte, 1)
+	var key []byte
+	var value []byte
+	for bytesRead < sst.metaOffset {
+		_, err = f.Read(length)
+		if err != nil {
+			return nil, err
+		}
+		key = make([]byte, length[0])
+		_, err = f.Read(key)
+		if err != nil {
+			return nil, err
+		}
+		_, err = f.Read(length)
+		if err != nil {
+			return nil, err
+		}
+
+		if Compare(start, key) == GREATER_THAN {
+			f.Seek(int64(length[0]), io.SeekCurrent)
+			bytesRead += uint64(len(key)) + uint64(length[0]) + 2
+		} else {
+			value = make([]byte, length[0])
+			_, err = f.Read(value)
+			if err != nil {
+				return nil, err
+			}
+			bytesRead += uint64(len(key)) + uint64(len(value)) + 2
+			break
+		}
+	}
+
+	if bytesRead >= sst.metaOffset {
+		return &sstIterator{
+			init:       false,
+			f:          f,
+			bytesRead:  sst.metaOffset,
+			metaOffset: sst.metaOffset,
+			key:        nil,
+			value:      nil,
+			start:      start,
+			end:        end,
+			closed:     true,
+		}, nil
+	} else {
+		return &sstIterator{
+			init:       false,
+			f:          f,
+			bytesRead:  bytesRead,
+			metaOffset: sst.metaOffset,
+			key:        key,
+			value:      value,
+			start:      start,
+			end:        end,
+			closed:     false,
+		}, nil
+	}
+}
+
+func (iter *sstIterator) Next() (bool, error) {
+	if iter.closed {
+		return false, nil
+	}
+
+	if iter.bytesRead >= iter.metaOffset {
+		return false, nil
+	}
+
+	if !iter.init {
+		iter.init = true
+		return true, nil
+	}
+
+	length := make([]byte, 1)
+	_, err := iter.f.Read(length)
+	if err != nil {
+		return false, err
+	}
+	key := make([]byte, length[0])
+	_, err = iter.f.Read(key)
+	if err != nil {
+		return false, err
+	}
+
+	if Compare(key, iter.end) == GREATER_THAN {
+		return false, nil
+	}
+
+	_, err = iter.f.Read(length)
+	if err != nil {
+		return false, err
+	}
+	value := make([]byte, length[0])
+	_, err = iter.f.Read(value)
+	if err != nil {
+		return false, err
+	}
+
+	iter.key = key
+	iter.value = value
+	iter.bytesRead += uint64(len(key)) + uint64(len(value)) + 2
+	return true, nil
+}
+
+func (iter *sstIterator) Get() (*pair, error) {
+	return &pair{key: iter.key, value: iter.value}, nil
+}
+
+func (iter *sstIterator) Close() error {
+	err := iter.f.Close()
+	iter.closed = true
+	return err
+}
+
 func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 	if mt == nil {
 		return nil, errors.New("unable to flush nil memtable")
@@ -86,11 +229,13 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 
 	bytesWritten := uint64(0)
 	currentBlockSize := uint64(0)
-	for iter.Next() {
-		k, v := iter.Get()
-		recordLength := uint64(len(k) + len(v) + 2)
+	next, _ := iter.Next()
+	for next {
+		pair, _ := iter.Get()
+		recordLength := uint64(len(pair.key) + len(pair.value) + 2)
 
 		if bytesWritten+recordLength > level.sstSize {
+			ssts[len(ssts)-1].metaOffset = bytesWritten
 			writeMeta(w, bytesWritten, blocks)
 			f.Close()
 			f = nil
@@ -102,26 +247,28 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 				return nil, err
 			}
 			w = bufio.NewWriter(f)
-			blocks = []*block{&block{start: k, offset: 0}}
+			blocks = []*block{&block{start: pair.key, offset: 0}}
 			ssts = append(ssts, &sst{file: f.Name(), blocks: blocks})
 			bytesWritten = 0
 			currentBlockSize = 0
 		}
 
 		if currentBlockSize+recordLength > level.blockSize {
-			blocks = append(blocks, &block{start: k, offset: bytesWritten})
+			blocks = append(blocks, &block{start: pair.key, offset: bytesWritten})
 			w.Flush()
 		}
 
-		w.WriteByte(uint8(len(k)))
-		w.Write(k)
-		w.WriteByte(uint8(len(v)))
-		w.Write(v)
+		w.WriteByte(uint8(len(pair.key)))
+		w.Write(pair.key)
+		w.WriteByte(uint8(len(pair.value)))
+		w.Write(pair.value)
 
 		bytesWritten += recordLength
 		currentBlockSize += recordLength
+		next, _ = iter.Next()
 	}
 
+	ssts[len(ssts)-1].metaOffset = bytesWritten
 	writeMeta(w, bytesWritten, blocks)
 	f.Close()
 
@@ -159,7 +306,7 @@ func Open(path string) (*sst, error) {
 		blocks[i] = block
 	}
 
-	opened := &sst{file: path, blocks: blocks}
+	opened := &sst{file: path, blocks: blocks, metaOffset: metaOffset}
 	return opened, nil
 }
 
