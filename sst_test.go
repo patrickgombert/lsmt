@@ -1,11 +1,6 @@
 package lsmt
 
-import (
-	"os"
-	"testing"
-)
-
-const TEST_DIR string = "/tmp/lsmt/"
+import "testing"
 
 func TestFlushNilMemtable(t *testing.T) {
 	level := Level{blockSize: 4096, sstSize: 524288000}
@@ -33,7 +28,7 @@ func TestFlush(t *testing.T) {
 }
 
 func TestOpenErrorFileNotFound(t *testing.T) {
-	_, err := Open("/not/real")
+	_, err := OpenSst("/not/real")
 	if err == nil {
 		t.Errorf("Expected opening non-existent SST to error but did not")
 	}
@@ -50,7 +45,7 @@ func TestFlushAndOpen(t *testing.T) {
 	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
 	ssts, _ := Flush(options, level, mt)
 
-	sst, _ := Open(ssts[0].file)
+	sst, _ := OpenSst(ssts[0].file)
 	if sst.file != ssts[0].file {
 		t.Errorf("Expected opened sst to have file path %s, but got %s", sst.file, ssts[0].file)
 	}
@@ -84,7 +79,7 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 		t.Errorf("Expected to flush %d tables, but flushed %d", 2, len(ssts))
 	}
 
-	sst0, _ := Open(ssts[0].file)
+	sst0, _ := OpenSst(ssts[0].file)
 	if Compare([]byte{0}, sst0.blocks[0].start) != EQUAL {
 		t.Errorf("Expected opened sst block 0 to start at %q, but got %q", []byte{0}, sst0.blocks[0].start)
 	}
@@ -92,7 +87,7 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 		t.Errorf("Expected opened sst block 1 to start at %q, but got %q", []byte{1}, sst0.blocks[1].start)
 	}
 
-	sst1, _ := Open(ssts[1].file)
+	sst1, _ := OpenSst(ssts[1].file)
 	if Compare([]byte{2}, sst1.blocks[0].start) != EQUAL {
 		t.Errorf("Expected opened sst block 0 to start at %q, but got %q", []byte{2}, sst1.blocks[0].start)
 	}
@@ -114,7 +109,7 @@ func TestFlushAndGet(t *testing.T) {
 	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
 	ssts, _ := Flush(options, level, mt)
 
-	sst, _ := Open(ssts[0].file)
+	sst, _ := OpenSst(ssts[0].file)
 	value, _ := sst.Get([]byte{1})
 
 	if Compare([]byte{1}, value) != EQUAL {
@@ -135,7 +130,7 @@ func TestFlushAndGetNotFound(t *testing.T) {
 	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
 	ssts, _ := Flush(options, level, mt)
 
-	sst, _ := Open(ssts[0].file)
+	sst, _ := OpenSst(ssts[0].file)
 	value, _ := sst.Get([]byte{2})
 	if value != nil {
 		t.Error("Expected non-existent key to not be found")
@@ -155,7 +150,7 @@ func TestIterFromStartOfFile(t *testing.T) {
 	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
 	ssts, _ := Flush(options, level, mt)
 
-	sst, _ := Open(ssts[0].file)
+	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{3})
 	defer iter.Close()
 
@@ -180,7 +175,7 @@ func TestIterStartsMidBlock(t *testing.T) {
 	options := Options{levels: []Level{level}, path: TEST_DIR, memtableMaximumSize: 1048576, keyMaximumSize: 1024, valueMaximumSize: 4096}
 	ssts, _ := Flush(options, level, mt)
 
-	sst, _ := Open(ssts[0].file)
+	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{2})
 	defer iter.Close()
 
@@ -191,16 +186,4 @@ func TestIterStartsMidBlock(t *testing.T) {
 	compareNext(iter, false, t)
 
 	tearDown(t)
-}
-
-func setUp(t *testing.T) {
-	if os.Mkdir(TEST_DIR, os.ModeDir|os.ModePerm) != nil {
-		t.Errorf("Failed to setUp by creating directory: %s", TEST_DIR)
-	}
-}
-
-func tearDown(t *testing.T) {
-	if os.RemoveAll(TEST_DIR) != nil {
-		t.Errorf("Failed to tearDown by removing directory: %s", TEST_DIR)
-	}
 }

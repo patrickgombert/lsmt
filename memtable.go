@@ -43,8 +43,8 @@ type redBranch struct {
 
 type persistentSortedMap struct {
 	root  persistentNode
-	count uint64
-	bytes uint64
+	count int64
+	bytes int64
 }
 
 type memtable struct {
@@ -297,18 +297,18 @@ func (memtable *memtable) Write(key, value []byte) {
 	if sortedMap.root == nil {
 		pair := pair{key: key, value: value}
 		root := &redNode{pair: pair}
-		bytes := lenu64(key) + lenu64(value)
+		bytes := leni64(key) + leni64(value)
 		memtable.sortedMap = &persistentSortedMap{root: root, count: 1, bytes: bytes}
 	} else {
 		node, existed := addNode(sortedMap.root, key, value)
 		if existed && Compare(value, node.getPair().value) != EQUAL {
-			bytes := (sortedMap.bytes - lenu64(node.getPair().value)) + lenu64(value)
+			bytes := (sortedMap.bytes - leni64(node.getPair().value)) + leni64(value)
 			root := replaceNode(sortedMap.root, key, value)
 			memtable.sortedMap = &persistentSortedMap{root: root, count: sortedMap.count, bytes: bytes}
 		} else {
 			blackenedNode := node.blacken()
 			count := sortedMap.count + 1
-			bytes := sortedMap.bytes + lenu64(key) + lenu64(value)
+			bytes := sortedMap.bytes + leni64(key) + leni64(value)
 			memtable.sortedMap = &persistentSortedMap{root: blackenedNode, count: count, bytes: bytes}
 		}
 	}
@@ -443,6 +443,6 @@ func appendStack(start []byte, root persistentNode, stack []persistentNode) []pe
 	return stack
 }
 
-func lenu64(bytes []byte) uint64 {
-	return uint64(len(bytes))
+func leni64(bytes []byte) int64 {
+	return int64(len(bytes))
 }

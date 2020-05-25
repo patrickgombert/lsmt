@@ -12,20 +12,20 @@ import (
 
 type block struct {
 	start  []byte
-	offset uint64
+	offset int64
 }
 
 type sst struct {
 	file       string
 	blocks     []*block
-	metaOffset uint64
+	metaOffset int64
 }
 
 type sstIterator struct {
 	init       bool
 	f          *os.File
-	bytesRead  uint64
-	metaOffset uint64
+	bytesRead  int64
+	metaOffset int64
 	key        []byte
 	value      []byte
 	start      []byte
@@ -97,7 +97,7 @@ func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
 		startBlock = block
 	}
 
-	f.Seek(int64(startBlock.offset), io.SeekStart)
+	f.Seek(startBlock.offset, io.SeekStart)
 	bytesRead := startBlock.offset
 	length := make([]byte, 1)
 	var key []byte
@@ -119,14 +119,14 @@ func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
 
 		if Compare(start, key) == GREATER_THAN {
 			f.Seek(int64(length[0]), io.SeekCurrent)
-			bytesRead += uint64(len(key)) + uint64(length[0]) + 2
+			bytesRead += int64(len(key) + int(length[0]) + 2)
 		} else {
 			value = make([]byte, length[0])
 			_, err = f.Read(value)
 			if err != nil {
 				return nil, err
 			}
-			bytesRead += uint64(len(key)) + uint64(len(value)) + 2
+			bytesRead += int64(len(key) + len(value) + 2)
 			break
 		}
 	}
@@ -199,7 +199,7 @@ func (iter *sstIterator) Next() (bool, error) {
 
 	iter.key = key
 	iter.value = value
-	iter.bytesRead += uint64(len(key)) + uint64(len(value)) + 2
+	iter.bytesRead += int64(len(key) + len(value) + 2)
 	return true, nil
 }
 
@@ -227,12 +227,12 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 	// TODO implement an unbounded iterator
 	iter := mt.Iterator([]byte{}, []byte{255, 255, 255, 255, 255, 255, 255, 255})
 
-	bytesWritten := uint64(0)
-	currentBlockSize := uint64(0)
+	bytesWritten := int64(0)
+	currentBlockSize := int64(0)
 	next, _ := iter.Next()
 	for next {
 		pair, _ := iter.Get()
-		recordLength := uint64(len(pair.key) + len(pair.value) + 2)
+		recordLength := int64(len(pair.key) + len(pair.value) + 2)
 
 		if bytesWritten+recordLength > level.sstSize {
 			ssts[len(ssts)-1].metaOffset = bytesWritten
@@ -258,9 +258,9 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 			w.Flush()
 		}
 
-		w.WriteByte(uint8(len(pair.key)))
+		w.WriteByte(byte(len(pair.key)))
 		w.Write(pair.key)
-		w.WriteByte(uint8(len(pair.value)))
+		w.WriteByte(byte(len(pair.value)))
 		w.Write(pair.value)
 
 		bytesWritten += recordLength
@@ -275,34 +275,34 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 	return ssts, nil
 }
 
-func Open(path string) (*sst, error) {
+func OpenSst(path string) (*sst, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	uint64holder := make([]byte, 8)
+	int64holder := make([]byte, 8)
 	keyLength := make([]byte, 1)
 
 	// Read metadata start relative to start of file
 	f.Seek(-8, io.SeekEnd)
-	f.Read(uint64holder)
-	metaOffset := bytesToUint64(uint64holder)
+	f.Read(int64holder)
+	metaOffset := bytesToInt64(int64holder)
 
 	// Seek to metadata start
-	f.Seek(int64(metaOffset), io.SeekStart)
+	f.Seek(metaOffset, io.SeekStart)
 	// Read number of blocks
-	f.Read(uint64holder)
-	numBlocks := bytesToUint64(uint64holder)
+	f.Read(int64holder)
+	numBlocks := bytesToInt64(int64holder)
 	blocks := make([]*block, numBlocks)
 
-	for i := uint64(0); i < numBlocks; i++ {
+	for i := int64(0); i < numBlocks; i++ {
 		f.Read(keyLength)
 		startKey := make([]byte, keyLength[0])
 		f.Read(startKey)
-		f.Read(uint64holder)
-		block := &block{start: startKey, offset: bytesToUint64(uint64holder)}
+		f.Read(int64holder)
+		block := &block{start: startKey, offset: bytesToInt64(int64holder)}
 		blocks[i] = block
 	}
 
@@ -321,23 +321,23 @@ func newFile(path string) (*os.File, error) {
 	return os.Create(fmt.Sprintf("%s%s.sst", path, fileName))
 }
 
-func writeMeta(w *bufio.Writer, metaStart uint64, blocks []*block) {
-	w.Write(uint64toBytes(uint64(len(blocks))))
+func writeMeta(w *bufio.Writer, metaStart int64, blocks []*block) {
+	w.Write(int64toBytes(int64(len(blocks))))
 	for _, block := range blocks {
-		w.WriteByte(uint8(len(block.start)))
+		w.WriteByte(byte(len(block.start)))
 		w.Write(block.start)
-		w.Write(uint64toBytes(block.offset))
+		w.Write(int64toBytes(block.offset))
 	}
-	w.Write(uint64toBytes(metaStart))
+	w.Write(int64toBytes(metaStart))
 	w.Flush()
 }
 
-func uint64toBytes(i uint64) []byte {
+func int64toBytes(i int64) []byte {
 	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, i)
+	binary.BigEndian.PutUint64(b, uint64(i))
 	return b
 }
 
-func bytesToUint64(b []byte) uint64 {
-	return binary.BigEndian.Uint64(b)
+func bytesToInt64(b []byte) int64 {
+	return int64(binary.BigEndian.Uint64(b))
 }
