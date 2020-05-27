@@ -1,8 +1,10 @@
-package lsmt
+package manifest
 
 import (
 	"io"
 	"os"
+
+	"github.com/patrickgombert/lsmt/sst"
 )
 
 type entry struct {
@@ -49,7 +51,7 @@ func OpenManifest(path string) (*manifest, error) {
 	return &manifest{entries: entries}, nil
 }
 
-func WriteManifest(path string, ssts [][]*sst) error {
+func WriteManifest(path string, ssts [][]sst.SST) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -59,8 +61,8 @@ func WriteManifest(path string, ssts [][]*sst) error {
 	for level, levelSsts := range ssts {
 		levelBytes := []byte{byte(level)}
 		for _, sst := range levelSsts {
-			f.Write([]byte{byte(len(sst.file))})
-			f.Write([]byte(sst.file))
+			f.Write([]byte{byte(len(sst.Path()))})
+			f.Write([]byte(sst.Path()))
 			f.Write(levelBytes)
 		}
 	}

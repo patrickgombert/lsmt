@@ -1,4 +1,4 @@
-package lsmt
+package sst
 
 import (
 	"bufio"
@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/patrickgombert/lsmt/common"
+	c "github.com/patrickgombert/lsmt/comparator"
+	"github.com/patrickgombert/lsmt/memtable"
 )
 
 type block struct {
@@ -33,10 +37,14 @@ type sstIterator struct {
 	closed     bool
 }
 
+func (sst *sst) Path() string {
+  return sst.file
+}
+
 func (sst *sst) Get(key []byte) ([]byte, error) {
 	var block *block
 	for _, b := range sst.blocks {
-		if Compare(key, b.start) == LESS_THAN {
+		if c.Compare(key, b.start) == c.LESS_THAN {
 			break
 		}
 		block = b
@@ -66,7 +74,7 @@ func (sst *sst) Get(key []byte) ([]byte, error) {
 		}
 
 		_, err = f.Read(length)
-		if Compare(key, k) == EQUAL {
+		if c.Compare(key, k) == c.EQUAL {
 			v := make([]byte, length[0])
 			_, err = f.Read(v)
 			if err != nil {
@@ -91,7 +99,7 @@ func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
 
 	startBlock := sst.blocks[0]
 	for _, block := range sst.blocks[1:] {
-		if Compare(start, block.start) == LESS_THAN {
+		if c.Compare(start, block.start) == c.LESS_THAN {
 			break
 		}
 		startBlock = block
@@ -117,7 +125,7 @@ func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
 			return nil, err
 		}
 
-		if Compare(start, key) == GREATER_THAN {
+		if c.Compare(start, key) == c.GREATER_THAN {
 			f.Seek(int64(length[0]), io.SeekCurrent)
 			bytesRead += int64(len(key) + int(length[0]) + 2)
 		} else {
@@ -183,7 +191,7 @@ func (iter *sstIterator) Next() (bool, error) {
 		return false, err
 	}
 
-	if Compare(key, iter.end) == GREATER_THAN {
+	if c.Compare(key, iter.end) == c.GREATER_THAN {
 		return false, nil
 	}
 
@@ -203,8 +211,8 @@ func (iter *sstIterator) Next() (bool, error) {
 	return true, nil
 }
 
-func (iter *sstIterator) Get() (*pair, error) {
-	return &pair{key: iter.key, value: iter.value}, nil
+func (iter *sstIterator) Get() (*common.Pair, error) {
+	return &common.Pair{Key: iter.key, Value: iter.value}, nil
 }
 
 func (iter *sstIterator) Close() error {
@@ -213,7 +221,7 @@ func (iter *sstIterator) Close() error {
 	return err
 }
 
-func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
+func Flush(options common.Options, level common.Level, mt *memtable.Memtable) ([]*sst, error) {
 	if mt == nil {
 		return nil, errors.New("unable to flush nil memtable")
 	}
@@ -232,9 +240,9 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 	next, _ := iter.Next()
 	for next {
 		pair, _ := iter.Get()
-		recordLength := int64(len(pair.key) + len(pair.value) + 2)
+		recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
 
-		if bytesWritten+recordLength > level.sstSize {
+		if bytesWritten+recordLength > level.SSTSize {
 			ssts[len(ssts)-1].metaOffset = bytesWritten
 			writeMeta(w, bytesWritten, blocks)
 			f.Close()
@@ -242,26 +250,26 @@ func Flush(options Options, level Level, mt *memtable) ([]*sst, error) {
 		}
 
 		if f == nil {
-			f, err = newFile(options.path)
+			f, err = newFile(options.Path)
 			if err != nil {
 				return nil, err
 			}
 			w = bufio.NewWriter(f)
-			blocks = []*block{&block{start: pair.key, offset: 0}}
+			blocks = []*block{&block{start: pair.Key, offset: 0}}
 			ssts = append(ssts, &sst{file: f.Name(), blocks: blocks})
 			bytesWritten = 0
 			currentBlockSize = 0
 		}
 
-		if currentBlockSize+recordLength > level.blockSize {
-			blocks = append(blocks, &block{start: pair.key, offset: bytesWritten})
+		if currentBlockSize+recordLength > level.BlockSize {
+			blocks = append(blocks, &block{start: pair.Key, offset: bytesWritten})
 			w.Flush()
 		}
 
-		w.WriteByte(byte(len(pair.key)))
-		w.Write(pair.key)
-		w.WriteByte(byte(len(pair.value)))
-		w.Write(pair.value)
+		w.WriteByte(byte(len(pair.Key)))
+		w.Write(pair.Key)
+		w.WriteByte(byte(len(pair.Value)))
+		w.Write(pair.Value)
 
 		bytesWritten += recordLength
 		currentBlockSize += recordLength

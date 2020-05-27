@@ -1,16 +1,29 @@
-package lsmt
+package manifest
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/patrickgombert/lsmt/common"
+	"github.com/patrickgombert/lsmt/sst"
+)
+
+type testSst struct {
+	path string
+}
+
+func (s *testSst) Path() string {
+	return s.path
+}
 
 func TestWriteAndReadManifest(t *testing.T) {
-	setUp(t)
+	common.SetUp(t)
 
-	levels := make([][]*sst, 2)
-	levels[0] = []*sst{&sst{file: "./file0.sst"}}
-	levels[1] = []*sst{&sst{file: "./file1.sst"}}
+	levels := make([][]sst.SST, 2)
+	levels[0] = []sst.SST{&testSst{path: "./file0.sst"}}
+	levels[1] = []sst.SST{&testSst{path: "./file1.sst"}}
 
-	WriteManifest(TEST_DIR+"manifest", levels)
-	manifest, _ := OpenManifest(TEST_DIR + "manifest")
+	WriteManifest(common.TEST_DIR+"manifest", levels)
+	manifest, _ := OpenManifest(common.TEST_DIR + "manifest")
 
 	if len(manifest.entries) != 2 {
 		t.Errorf("Expected %q manifest entries, but got %q", 2, len(manifest.entries))
@@ -30,5 +43,5 @@ func TestWriteAndReadManifest(t *testing.T) {
 		t.Errorf("Expected entry 1 to have level %d, but got %d", 1, entry1.level)
 	}
 
-	tearDown(t)
+	common.TearDown(t)
 }

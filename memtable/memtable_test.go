@@ -1,12 +1,15 @@
-package lsmt
+package memtable
 
 import (
 	"math/rand"
 	"testing"
+
+	"github.com/patrickgombert/lsmt/common"
+	c "github.com/patrickgombert/lsmt/comparator"
 )
 
 func TestGetNoKey(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	val, found := mt.Get([]byte{0})
 	if val != nil {
 		t.Error("Expected empty map to not produce a value for Get(), but a value was produced")
@@ -17,7 +20,7 @@ func TestGetNoKey(t *testing.T) {
 }
 
 func TestGetValue(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	key := []byte{1}
 	value := []byte{0}
 	mt.Write(key, value)
@@ -25,33 +28,33 @@ func TestGetValue(t *testing.T) {
 	if !found {
 		t.Errorf("Expected key %q to be found, but was not found", key)
 	}
-	if Compare(value, val) != EQUAL {
+	if c.Compare(value, val) != c.EQUAL {
 		t.Errorf("Expected value %q to equal produced value %q", value, val)
 	}
 }
 
 func TestInsertAndGetRandomValues(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	for i := 0; i < 100; i++ {
 		key := randomBytes(1, 100)
 		value := randomBytes(0, 100)
 		mt.Write(key, value)
 		found, _ := mt.Get(key)
-		if Compare(found, value) != EQUAL {
+		if c.Compare(found, value) != c.EQUAL {
 			t.Errorf("Expected value for key %q to equal %q but got %q", key, found, value)
 		}
 	}
 }
 
 func TestEmptyIterator(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 
 	iter := mt.Iterator([]byte{0}, []byte{1})
 	defer iter.Close()
 
 	pair, _ := iter.Get()
 	if pair != nil {
-		t.Errorf("Expected nil : nil but got %q : %q", pair.key, pair.value)
+		t.Errorf("Expected nil : nil but got %q : %q", pair.Key, pair.Value)
 	}
 	next, _ := iter.Next()
 	if next {
@@ -60,7 +63,7 @@ func TestEmptyIterator(t *testing.T) {
 }
 
 func TestIteratorFromStartAndDoesNotHitEndKey(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	mt.Write([]byte{1, 1, 1}, []byte{1, 1, 1})
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1, 1}, []byte{1, 1})
@@ -68,17 +71,17 @@ func TestIteratorFromStartAndDoesNotHitEndKey(t *testing.T) {
 
 	iter := mt.Iterator([]byte{0, 0}, []byte{1, 1, 1, 1})
 	defer iter.Close()
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{1, 1}, []byte{1, 1}, t)
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{1, 1, 1}, []byte{1, 1, 1}, t)
-	compareNext(iter, false, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1, 1}, []byte{1, 1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1, 1, 1}, []byte{1, 1, 1}, t)
+	common.CompareNext(iter, false, t)
 }
 
 func TestIteratorFromStartDoesHitEndKey(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	mt.Write([]byte{1, 1, 1}, []byte{1, 1, 1})
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1, 1}, []byte{1, 1})
@@ -86,28 +89,28 @@ func TestIteratorFromStartDoesHitEndKey(t *testing.T) {
 
 	iter := mt.Iterator([]byte{}, []byte{1, 1})
 	defer iter.Close()
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{0}, []byte{0}, t)
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{1, 1}, []byte{1, 1}, t)
-	compareNext(iter, false, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{0}, []byte{0}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1, 1}, []byte{1, 1}, t)
+	common.CompareNext(iter, false, t)
 }
 
 func TestIteratorPastStart(t *testing.T) {
-	mt := Memtable()
+	mt := NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1}, []byte{1})
 	mt.Write([]byte{2}, []byte{2})
 
 	iter := mt.Iterator([]byte{1}, []byte{3})
 	defer iter.Close()
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{1}, []byte{1}, t)
-	compareNext(iter, true, t)
-	compareGet(iter, []byte{2}, []byte{2}, t)
-	compareNext(iter, false, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1}, []byte{1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{2}, []byte{2}, t)
+	common.CompareNext(iter, false, t)
 }
 
 func randomBytes(minSize, maxSize int) []byte {

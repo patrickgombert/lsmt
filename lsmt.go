@@ -2,76 +2,37 @@ package lsmt
 
 import (
 	"errors"
-	"fmt"
+
+	"github.com/patrickgombert/lsmt/common"
+	mt "github.com/patrickgombert/lsmt/memtable"
 )
 
-var Tombstone = []byte{}
-
-type Level struct {
-	blockSize int64
-	sstSize   int64
-}
-
-type Options struct {
-	levels              []Level
-	path                string
-	memtableMaximumSize int64
-	keyMaximumSize      int
-	valueMaximumSize    int
-}
-
 type lsmt struct {
-	options           Options
-	activeMemtable    *memtable
-	inactiveMemtables []*memtable
+	options           common.Options
+	activeMemtable    *mt.Memtable
+	inactiveMemtables []*mt.Memtable
 }
 
-type pair struct {
-	key   []byte
-	value []byte
-}
-
-type iterator interface {
-	Next() (bool, error)
-	Get() (*pair, error)
-	Close() error
-}
-
-func Lsmt(options Options) (*lsmt, error) {
-	err := options.validate()
+func Lsmt(options common.Options) (*lsmt, error) {
+	err := options.Validate()
 	if err != nil {
 		return nil, err
 	}
-	return &lsmt{options: options, activeMemtable: Memtable(), inactiveMemtables: []*memtable{}}, nil
-}
 
-func (options Options) validate() error {
-	if len(options.levels) == 0 {
-		return errors.New("must specify at least one sst level")
-	}
-
-	for _, level := range options.levels {
-		if int(level.blockSize) < options.keyMaximumSize {
-			fmt.Errorf("keyMaximumSize %q is larger than a level's blocksize %q", options.keyMaximumSize, level.blockSize)
-		} else if int(level.blockSize) < options.valueMaximumSize {
-			fmt.Errorf("valueMaximumSize %q is larger than a level's blocksize %q", options.valueMaximumSize, level.blockSize)
-		}
-	}
-
-	return nil
+	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}}, nil
 }
 
 func (db *lsmt) Write(key, value []byte) error {
 	if key == nil || len(key) == 0 {
 		return errors.New("key must not be nil and must not be empty")
 	}
-	if len(key) > db.options.keyMaximumSize {
+	if len(key) > db.options.KeyMaximumSize {
 		return errors.New("key must not be greater than the maximum key size")
 	}
 	if value == nil || len(value) == 0 {
 		return errors.New("value must not be nil and must not not be empty")
 	}
-	if len(value) > db.options.valueMaximumSize {
+	if len(value) > db.options.ValueMaximumSize {
 		return errors.New("value must not be greater than the maximum value size")
 	}
 
@@ -85,7 +46,7 @@ func (db *lsmt) Delete(key []byte) error {
 		return errors.New("key must not be nil and must not be empty")
 	}
 
-	db.activeMemtable.Write(key, Tombstone)
+	db.activeMemtable.Write(key, common.Tombstone)
 
 	return nil
 }

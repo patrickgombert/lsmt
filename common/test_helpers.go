@@ -1,33 +1,35 @@
-package lsmt
+package common
 
 import (
 	"os"
 	"testing"
+
+	"github.com/patrickgombert/lsmt/comparator"
 )
 
 const TEST_DIR string = "/tmp/lsmt/"
 
-func compareGet(iter iterator, key, value []byte, t *testing.T) {
+func CompareGet(iter Iterator, key, value []byte, t *testing.T) {
 	pair, _ := iter.Get()
-	if Compare(pair.key, key) != EQUAL || Compare(pair.value, value) != EQUAL {
-		t.Errorf("Expected Get() to produce %q : %q, but got %q : %q", key, value, pair.key, pair.value)
+	if comparator.Compare(pair.Key, key) != comparator.EQUAL || comparator.Compare(pair.Value, value) != comparator.EQUAL {
+		t.Errorf("Expected Get() to produce %q : %q, but got %q : %q", key, value, pair.Key, pair.Value)
 	}
 }
 
-func compareNext(iter iterator, expected bool, t *testing.T) {
+func CompareNext(iter Iterator, expected bool, t *testing.T) {
 	actual, _ := iter.Next()
 	if actual != expected {
 		t.Errorf("Expected Next() to produce %t, but got %t.", expected, actual)
 	}
 }
 
-func setUp(t *testing.T) {
+func SetUp(t *testing.T) {
 	if os.Mkdir(TEST_DIR, os.ModeDir|os.ModePerm) != nil {
 		t.Errorf("Failed to setUp by creating directory: %s", TEST_DIR)
 	}
 }
 
-func tearDown(t *testing.T) {
+func TearDown(t *testing.T) {
 	if os.RemoveAll(TEST_DIR) != nil {
 		t.Errorf("Failed to tearDown by removing directory: %s", TEST_DIR)
 	}

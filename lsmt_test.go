@@ -1,10 +1,14 @@
 package lsmt
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/patrickgombert/lsmt/common"
+)
 
 func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
-	level := Level{blockSize: 4000}
-	options := Options{levels: []Level{level}, memtableMaximumSize: 0}
+	levels := []common.Level{common.Level{BlockSize: 4000}}
+	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write(nil, []byte{0})
 	if err == nil {
@@ -17,8 +21,8 @@ func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 }
 
 func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
-	level := Level{blockSize: 4000}
-	options := Options{levels: []Level{level}, memtableMaximumSize: 0}
+	levels := []common.Level{common.Level{BlockSize: 4000}}
+	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write([]byte{0}, nil)
 	if err == nil {
@@ -31,8 +35,8 @@ func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
 }
 
 func TestDeleteNilOrEmptyKeyReturnsError(t *testing.T) {
-	level := Level{blockSize: 4000}
-	options := Options{levels: []Level{level}, memtableMaximumSize: 0}
+	levels := []common.Level{common.Level{BlockSize: 4000}}
+	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Delete(nil)
 	if err == nil {

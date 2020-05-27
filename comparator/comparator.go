@@ -1,4 +1,4 @@
-package lsmt
+package comparator
 
 type comparison int
 
