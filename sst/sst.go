@@ -11,7 +11,7 @@ type MergedSST struct {
 }
 
 type SST interface {
-  Path() string
+	Path() string
 }
 
 type SSTManager interface {

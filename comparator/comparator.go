@@ -8,6 +8,7 @@ const (
 	GREATER_THAN comparison = 1
 )
 
+// Compare two byte slices in lexicographical order
 func Compare(a, b []byte) comparison {
 	for i, _ := range a {
 		if i+1 > len(b) {

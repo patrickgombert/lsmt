@@ -38,7 +38,7 @@ type sstIterator struct {
 }
 
 func (sst *sst) Path() string {
-  return sst.file
+	return sst.file
 }
 
 func (sst *sst) Get(key []byte) ([]byte, error) {
