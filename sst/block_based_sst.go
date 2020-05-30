@@ -37,6 +37,9 @@ type sstIterator struct {
 	closed     bool
 }
 
+type BlockBasedSSTManager struct {
+}
+
 func (sst *sst) Path() string {
 	return sst.file
 }

@@ -5,12 +5,16 @@ import (
 	c "github.com/patrickgombert/lsmt/comparator"
 )
 
+// Stack based iterator which keeps the trees lineage in memory while iterating.
 type memtableIterator struct {
 	init  bool
 	stack []persistentNode
 	end   []byte
 }
 
+// Creates a new bounded iterator for the current state of the memtable.
+// Since the memtable is backed by a persistent data structure, this reflects a point in
+// time snapshot of the memtable.
 func (memtable *Memtable) Iterator(start, end []byte) *memtableIterator {
 	stack := make([]persistentNode, 0)
 	node := memtable.sortedMap.root
@@ -26,6 +30,10 @@ func (memtable *Memtable) Iterator(start, end []byte) *memtableIterator {
 	return &memtableIterator{init: false, stack: stack, end: end}
 }
 
+// Moves the iterator forward. Returns false when either the end of the tree has been
+// reached or if the end key has been passed.
+// The Next() call should never error, but returns a nil error in order to
+// satisfy the Iterator interface.
 func (iter *memtableIterator) Next() (bool, error) {
 	if len(iter.stack) == 0 {
 		return false, nil
@@ -52,6 +60,9 @@ func (iter *memtableIterator) Next() (bool, error) {
 	}
 }
 
+// Returns the current element's Pair.
+// The Get() call should never error, but returns a nil error in order to
+// satisfy the Iterator interface.
 func (iter *memtableIterator) Get() (*common.Pair, error) {
 	if len(iter.stack) == 0 {
 		return nil, nil
@@ -60,6 +71,8 @@ func (iter *memtableIterator) Get() (*common.Pair, error) {
 	return &pair, nil
 }
 
+// Closes the instance of the iterator which has the effect of making subsequent calls
+// to Next() return false and Get() return nil.
 func (iter *memtableIterator) Close() error {
 	iter.stack = []persistentNode{}
 	return nil

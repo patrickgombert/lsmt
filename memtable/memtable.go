@@ -5,6 +5,7 @@ import (
 	c "github.com/patrickgombert/lsmt/comparator"
 )
 
+// Used to denote a red or black node
 type color int8
 
 const (
@@ -268,11 +269,14 @@ func makeRedNode(pair common.Pair, left, right persistentNode) persistentNode {
 	}
 }
 
+// Creates a new instance of a Memtable
 func NewMemtable() *Memtable {
 	sortedMap := &persistentSortedMap{root: nil, count: 0, bytes: 0}
 	return &Memtable{sortedMap: sortedMap}
 }
 
+// Returns the value for a given key. The second return value signals whether the key was
+// found or not found.
 func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
 	node := memtable.sortedMap.root
 	for {
@@ -282,7 +286,11 @@ func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
 		comparison := c.Compare(key, node.getPair().Key)
 		switch comparison {
 		case c.EQUAL:
-			return node.getPair().Value, true
+			if c.Compare(node.getPair().Value, common.Tombstone) == c.EQUAL {
+				return nil, false
+			} else {
+				return node.getPair().Value, true
+			}
 		case c.LESS_THAN:
 			node = node.getLeft()
 		case c.GREATER_THAN:

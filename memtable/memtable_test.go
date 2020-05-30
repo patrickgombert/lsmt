@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
 )
 
@@ -29,6 +30,17 @@ func TestGetValue(t *testing.T) {
 	}
 	if c.Compare(value, val) != c.EQUAL {
 		t.Errorf("Expected value %q to equal produced value %q", value, val)
+	}
+}
+
+func TestGetDeletedValue(t *testing.T) {
+	mt := NewMemtable()
+	key := []byte{1}
+	mt.Write(key, []byte{1})
+	mt.Write(key, common.Tombstone)
+	_, found := mt.Get(key)
+	if found {
+		t.Error("Expected tombstoned record to not be found, but was found")
 	}
 }
 
