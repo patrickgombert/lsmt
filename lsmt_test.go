@@ -3,12 +3,13 @@ package lsmt
 import (
 	"testing"
 
-	"github.com/patrickgombert/lsmt/common"
+	"github.com/patrickgombert/lsmt/config"
 )
 
+var sink config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheSize: 1000}
+var options config.Options = config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10}
+
 func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
-	levels := []common.Level{common.Level{BlockSize: 4000}}
-	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write(nil, []byte{0})
 	if err == nil {
@@ -21,8 +22,6 @@ func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 }
 
 func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
-	levels := []common.Level{common.Level{BlockSize: 4000}}
-	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write([]byte{0}, nil)
 	if err == nil {
@@ -35,8 +34,6 @@ func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
 }
 
 func TestDeleteNilOrEmptyKeyReturnsError(t *testing.T) {
-	levels := []common.Level{common.Level{BlockSize: 4000}}
-	options := common.Options{Levels: levels, MemtableMaximumSize: 0}
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Delete(nil)
 	if err == nil {

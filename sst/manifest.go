@@ -1,29 +1,27 @@
-package manifest
+package sst
 
 import (
 	"io"
 	"os"
-
-	"github.com/patrickgombert/lsmt/sst"
 )
 
-type entry struct {
-	path  string
-	level int8
+type Entry struct {
+	Path  string
+	Level int8
 }
 
-type manifest struct {
-	entries []entry
+type Manifest struct {
+	Entries []Entry
 }
 
-func OpenManifest(path string) (*manifest, error) {
+func OpenManifest(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	entries := []entry{}
+	entries := []Entry{}
 	length := make([]byte, 1)
 	for {
 		_, err = f.Read(length)
@@ -45,13 +43,13 @@ func OpenManifest(path string) (*manifest, error) {
 			return nil, err
 		}
 
-		entries = append(entries, entry{path: string(path), level: int8(length[0])})
+		entries = append(entries, Entry{Path: string(path), Level: int8(length[0])})
 	}
 
-	return &manifest{entries: entries}, nil
+	return &Manifest{Entries: entries}, nil
 }
 
-func WriteManifest(path string, ssts [][]sst.SST) error {
+func WriteManifest(path string, ssts [][]SST) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err

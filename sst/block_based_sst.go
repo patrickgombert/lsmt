@@ -11,6 +11,7 @@ import (
 
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
+	"github.com/patrickgombert/lsmt/config"
 	"github.com/patrickgombert/lsmt/memtable"
 )
 
@@ -37,7 +38,8 @@ type sstIterator struct {
 	closed     bool
 }
 
-type BlockBasedSSTManager struct {
+func (block *block) Shard(numShards int) int {
+	return int(block.offset) % numShards
 }
 
 func (sst *sst) Path() string {
@@ -224,7 +226,7 @@ func (iter *sstIterator) Close() error {
 	return err
 }
 
-func Flush(options common.Options, level common.Level, mt *memtable.Memtable) ([]*sst, error) {
+func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([]*sst, error) {
 	if mt == nil {
 		return nil, errors.New("unable to flush nil memtable")
 	}

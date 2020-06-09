@@ -5,12 +5,13 @@ import (
 
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
+	"github.com/patrickgombert/lsmt/config"
 	"github.com/patrickgombert/lsmt/memtable"
 )
 
 func TestFlushNilMemtable(t *testing.T) {
-	levels := []common.Level{common.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := common.Options{Levels: levels, Path: "/tmp/lsmt/", MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
+	options := config.Options{Levels: levels, Path: "/tmp/lsmt/", MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	_, err := Flush(options, levels[0], nil)
 	if err == nil {
 		t.Error("Expected flushing nil memtable to produce an error but did not")
@@ -23,8 +24,8 @@ func TestFlush(t *testing.T) {
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []common.Level{common.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	_, err := Flush(options, levels[0], mt)
 	if err != nil {
 		t.Errorf("Failed to flush memtable with error %q", err)
@@ -47,8 +48,8 @@ func TestFlushAndOpen(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []common.Level{common.Level{BlockSize: 4, SSTSize: 8}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	sst, _ := OpenSst(ssts[0].file)
@@ -77,8 +78,8 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	mt.Write([]byte{2}, []byte{2})
 	mt.Write([]byte{3}, []byte{3})
 
-	levels := []common.Level{common.Level{BlockSize: 4, SSTSize: 8}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	if len(ssts) != 2 {
@@ -111,8 +112,8 @@ func TestFlushAndGet(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []common.Level{common.Level{BlockSize: 4, SSTSize: 8}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	sst, _ := OpenSst(ssts[0].file)
@@ -132,8 +133,8 @@ func TestFlushAndGetNotFound(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []common.Level{common.Level{BlockSize: 4, SSTSize: 8}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	sst, _ := OpenSst(ssts[0].file)
@@ -152,8 +153,8 @@ func TestIterFromStartOfFile(t *testing.T) {
 	mt.Write([]byte{1}, []byte{1, 1})
 	mt.Write([]byte{2}, []byte{2, 2})
 
-	levels := []common.Level{common.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	sst, _ := OpenSst(ssts[0].file)
@@ -177,8 +178,8 @@ func TestIterStartsMidBlock(t *testing.T) {
 	mt.Write([]byte{2}, []byte{2, 2})
 	mt.Write([]byte{3}, []byte{3, 3})
 
-	levels := []common.Level{common.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := common.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt)
 
 	sst, _ := OpenSst(ssts[0].file)

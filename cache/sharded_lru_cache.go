@@ -6,10 +6,14 @@ import (
 	"sync"
 )
 
+type Shardable interface {
+	Shard(numShards int) int
+}
+
 // A single cache entry to be contained in a list.Element
 type e struct {
-	key   interface{}
-	value interface{}
+	key   Shardable
+	value []byte
 	size  int
 }
 
@@ -19,7 +23,7 @@ type e struct {
 type shard struct {
 	lock     sync.RWMutex
 	size     int64
-	entries  map[interface{}]*list.Element
+	entries  map[Shardable]*list.Element
 	ordering *list.List
 }
 
@@ -29,26 +33,25 @@ type shard struct {
 type ShardedLRUCache struct {
 	shardMaxSize int64
 	shards       []*shard
-	shardKey     func(interface{}) int
 }
 
 // Generates a new instance of a ShardedLRUCache for the number of shards provided.
 // Each shard is of equal size.
-func NewShardedLRUCache(numShards int, size int64, shardKey func(interface{}) int) *ShardedLRUCache {
+func NewShardedLRUCache(numShards int, size int64) *ShardedLRUCache {
 	shards := make([]*shard, numShards)
 	shardSize := size / int64(numShards)
 	for i := range shards {
-		entries := make(map[interface{}]*list.Element)
+		entries := make(map[Shardable]*list.Element)
 		shards[i] = &shard{size: 0, entries: entries, ordering: list.New()}
 	}
 
-	return &ShardedLRUCache{shardMaxSize: shardSize, shards: shards, shardKey: shardKey}
+	return &ShardedLRUCache{shardMaxSize: shardSize, shards: shards}
 }
 
 // Get the value for a given key, falling back to the provider function if it does not
 // exist. The provider function must provide both the value for the associated key and
 // the size of the generated value.
-func (lru *ShardedLRUCache) Get(key interface{}, provider func(interface{}) (interface{}, int)) (interface{}, error) {
+func (lru *ShardedLRUCache) Get(key Shardable, provider func(Shardable) ([]byte, error)) ([]byte, error) {
 	shard, err := lru.getShard(key)
 	if err != nil {
 		return nil, err
@@ -65,7 +68,11 @@ func (lru *ShardedLRUCache) Get(key interface{}, provider func(interface{}) (int
 
 		return listElement.Value.(*e).value, nil
 	} else {
-		value, size := provider(key)
+		value, err := provider(key)
+		if err != nil {
+			return nil, err
+		}
+		size := len(value)
 		entry := &e{key: key, value: value, size: size}
 		shard.lock.Lock()
 		listElement = shard.ordering.PushFront(entry)
@@ -85,7 +92,7 @@ func (lru *ShardedLRUCache) Get(key interface{}, provider func(interface{}) (int
 }
 
 // Evict the entry for a given key from the cache.
-func (lru *ShardedLRUCache) Evict(key interface{}) error {
+func (lru *ShardedLRUCache) Evict(key Shardable) error {
 	shard, err := lru.getShard(key)
 	if err != nil {
 		return err
@@ -104,8 +111,8 @@ func (lru *ShardedLRUCache) Evict(key interface{}) error {
 	return nil
 }
 
-func (lru *ShardedLRUCache) getShard(key interface{}) (*shard, error) {
-	shardNum := lru.shardKey(key)
+func (lru *ShardedLRUCache) getShard(key Shardable) (*shard, error) {
+	shardNum := key.Shard(len(lru.shards))
 	if shardNum < 0 || shardNum > len(lru.shards) {
 		return nil, fmt.Errorf("shard key produced %d for number of shards %d with key %q", shardNum, len(lru.shards), key)
 	}

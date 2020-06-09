@@ -1,7 +1,7 @@
 package cache
 
-// Cache provides an interface for a write-through cache
+// Cache provides an interface for a write-through cache. Keys must be Shardable.
 type Cache interface {
-	Get(key interface{}, provider func(interface{}) (interface{}, int)) (interface{}, error)
-	Evict(key interface{}) error
+	Get(key Shardable, provider func(Shardable) ([]byte, error)) ([]byte, error)
+	Evict(key Shardable) error
 }

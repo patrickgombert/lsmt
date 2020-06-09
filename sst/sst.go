@@ -2,6 +2,7 @@ package sst
 
 import (
 	"github.com/patrickgombert/lsmt/common"
+	"github.com/patrickgombert/lsmt/config"
 	"github.com/patrickgombert/lsmt/memtable"
 )
 
@@ -15,7 +16,7 @@ type SST interface {
 }
 
 type SSTManager interface {
-	get(key []byte) ([]byte, error)
-	iterator(start, end []byte) (*common.Iterator, error)
-	flush(options common.Options, level common.Level, mt *memtable.Memtable) ([]*sst, error)
+	Get(key []byte) ([]byte, error)
+	Iterator(start, end []byte) (common.Iterator, error)
+	Flush(options config.Options, level config.Level, mt *memtable.Memtable)
 }

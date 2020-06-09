@@ -4,19 +4,20 @@ import (
 	"errors"
 
 	"github.com/patrickgombert/lsmt/common"
+	"github.com/patrickgombert/lsmt/config"
 	mt "github.com/patrickgombert/lsmt/memtable"
 )
 
 type lsmt struct {
-	options           common.Options
+	options           config.Options
 	activeMemtable    *mt.Memtable
 	inactiveMemtables []*mt.Memtable
 }
 
-func Lsmt(options common.Options) (*lsmt, error) {
-	err := options.Validate()
-	if err != nil {
-		return nil, err
+func Lsmt(options config.Options) (*lsmt, []error) {
+	errs := options.Validate()
+	if len(errs) != 0 {
+		return nil, errs
 	}
 
 	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}}, nil
