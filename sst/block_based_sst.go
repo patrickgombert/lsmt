@@ -17,6 +17,7 @@ import (
 
 type block struct {
 	start  []byte
+	end    []byte
 	offset int64
 }
 
@@ -237,18 +238,22 @@ func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([
 
 	ssts := []*sst{}
 	var blocks []*block
+	var currentBlock *block
+	var previousPair *common.Pair
 	// TODO implement an unbounded iterator
 	iter := mt.Iterator([]byte{}, []byte{255, 255, 255, 255, 255, 255, 255, 255})
 
 	bytesWritten := int64(0)
 	currentBlockSize := int64(0)
 	next, _ := iter.Next()
+
 	for next {
 		pair, _ := iter.Get()
 		recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
 
 		if bytesWritten+recordLength > level.SSTSize {
 			ssts[len(ssts)-1].metaOffset = bytesWritten
+			currentBlock.end = previousPair.Key
 			writeMeta(w, bytesWritten, blocks)
 			f.Close()
 			f = nil
@@ -260,14 +265,18 @@ func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([
 				return nil, err
 			}
 			w = bufio.NewWriter(f)
-			blocks = []*block{&block{start: pair.Key, offset: 0}}
+			currentBlock = &block{start: pair.Key, offset: 0}
+			blocks = []*block{currentBlock}
 			ssts = append(ssts, &sst{file: f.Name(), blocks: blocks})
 			bytesWritten = 0
 			currentBlockSize = 0
 		}
 
 		if currentBlockSize+recordLength > level.BlockSize {
-			blocks = append(blocks, &block{start: pair.Key, offset: bytesWritten})
+			currentBlock.end = previousPair.Key
+			currentBlock = &block{start: pair.Key, offset: bytesWritten}
+			currentBlockSize = 0
+			blocks = append(blocks, currentBlock)
 			w.Flush()
 		}
 
@@ -279,9 +288,11 @@ func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([
 		bytesWritten += recordLength
 		currentBlockSize += recordLength
 		next, _ = iter.Next()
+		previousPair = pair
 	}
 
 	ssts[len(ssts)-1].metaOffset = bytesWritten
+	currentBlock.end = previousPair.Key
 	writeMeta(w, bytesWritten, blocks)
 	f.Close()
 
@@ -314,8 +325,12 @@ func OpenSst(path string) (*sst, error) {
 		f.Read(keyLength)
 		startKey := make([]byte, keyLength[0])
 		f.Read(startKey)
+		f.Read(keyLength)
+		endKey := make([]byte, keyLength[0])
+		f.Read(endKey)
+
 		f.Read(int64holder)
-		block := &block{start: startKey, offset: bytesToInt64(int64holder)}
+		block := &block{start: startKey, end: endKey, offset: bytesToInt64(int64holder)}
 		blocks[i] = block
 	}
 
@@ -339,6 +354,8 @@ func writeMeta(w *bufio.Writer, metaStart int64, blocks []*block) {
 	for _, block := range blocks {
 		w.WriteByte(byte(len(block.start)))
 		w.Write(block.start)
+		w.WriteByte(byte(len(block.end)))
+		w.Write(block.end)
 		w.Write(int64toBytes(block.offset))
 	}
 	w.Write(int64toBytes(metaStart))

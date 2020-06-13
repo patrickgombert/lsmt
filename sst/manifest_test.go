@@ -24,22 +24,22 @@ func TestWriteAndReadManifest(t *testing.T) {
 	WriteManifest(common.TEST_DIR+"manifest", levels)
 	manifest, _ := OpenManifest(common.TEST_DIR + "manifest")
 
-	if len(manifest.Entries) != 2 {
-		t.Errorf("Expected %q manifest entries, but got %q", 2, len(manifest.Entries))
+	if len(manifest.Levels) != 2 {
+		t.Errorf("Expected %d manifest levels, but got %d", 2, len(manifest.Levels))
 	}
-	entry0 := manifest.Entries[0]
-	if entry0.Path != "./file0.sst" {
-		t.Errorf("Expected entry 0 to have file path %q, but got %q", "./file0.sst", entry0.Path)
+	level0 := manifest.Levels[0]
+	if len(level0) != 1 {
+		t.Errorf("Expected level 0 to have %d entries, but got %d", 1, len(level0))
 	}
-	if entry0.Level != 0 {
-		t.Errorf("Expected entry 0 to have level %d, but got %d", 0, entry0.Level)
+	if level0[0].Path != "./file0.sst" {
+		t.Errorf("Expected level 0 / entry 0 to have file path %q, but got %q", "./file0.sst", level0[0].Path)
 	}
-	entry1 := manifest.Entries[1]
-	if entry1.Path != "./file1.sst" {
-		t.Errorf("Expected entry 1 to have file path %q, but got %q", "./file1.sst", entry1.Path)
+	level1 := manifest.Levels[1]
+	if len(level1) != 1 {
+		t.Errorf("Expected level 1 to have %d entries, but got %d", 1, len(level0))
 	}
-	if entry1.Level != 1 {
-		t.Errorf("Expected entry 1 to have level %d, but got %d", 1, entry1.Level)
+	if level1[0].Path != "./file1.sst" {
+		t.Errorf("Expected level 1 / entry 1 to have file path %q, but got %q", "./file1.sst", level1[0].Path)
 	}
 
 	common.TearDown(t)

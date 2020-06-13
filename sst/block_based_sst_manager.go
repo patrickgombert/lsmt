@@ -14,38 +14,38 @@ type blockBasedLevel struct {
 }
 
 type BlockBasedSSTManager struct {
-	levels       []*blockBasedLevel
-	stagedLevels []*blockBasedLevel
+	levels   []*blockBasedLevel
+	manifest *Manifest
 }
 
 func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*BlockBasedSSTManager, error) {
-	levels := make(map[int8]*blockBasedLevel)
-	for _, entry := range manifest.Entries {
-		l, present := levels[entry.Level]
-		if !present {
-			levelOptions := options.Levels[entry.Level]
-			cache := cache.NewShardedLRUCache(levelOptions.BlockCacheShards, levelOptions.BlockCacheSize)
-			l = &blockBasedLevel{ssts: []*sst{}, blockCache: cache}
+	levels := make([]*blockBasedLevel, len(manifest.Levels))
+	for i, entries := range manifest.Levels {
+		levelOptions := options.Levels[i]
+		cache := cache.NewShardedLRUCache(levelOptions.BlockCacheShards, levelOptions.BlockCacheSize)
+		ssts := make([]*sst, len(entries))
+		l := &blockBasedLevel{ssts: ssts, blockCache: cache}
+
+		for idx, entry := range entries {
+			sst, err := OpenSst(entry.Path)
+			if err != nil {
+				return nil, err
+			}
+			ssts[idx] = sst
 		}
 
-		sst, err := OpenSst(entry.Path)
-		if err != nil {
-			return nil, err
-		}
-		l.ssts = append(l.ssts, sst)
-		levels[entry.Level] = l
+		levels[i] = l
 	}
 
-	blockLevels := make([]*blockBasedLevel, len(levels))
-	for level, blockLevel := range levels {
-		blockLevels[level] = blockLevel
-	}
-
-	manager := &BlockBasedSSTManager{levels: blockLevels, stagedLevels: []*blockBasedLevel{}}
+	manager := &BlockBasedSSTManager{levels: levels, manifest: manifest}
 	return manager, nil
 }
 
 func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
+	//for _, level := manager.levels {
+	//
+	//}
+
 	return nil, nil
 }
 
@@ -68,6 +68,5 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 	return mergedIterator, nil
 }
 
-func (manager *BlockBasedSSTManager) Flush(options config.Options, level config.Level, mt *memtable.Memtable) {
-
+func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) {
 }

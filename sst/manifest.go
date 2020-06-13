@@ -1,17 +1,16 @@
 package sst
 
 import (
-	"io"
+	"encoding/binary"
 	"os"
 )
 
 type Entry struct {
-	Path  string
-	Level int8
+	Path string
 }
 
 type Manifest struct {
-	Entries []Entry
+	Levels [][]Entry
 }
 
 func OpenManifest(path string) (*Manifest, error) {
@@ -21,47 +20,61 @@ func OpenManifest(path string) (*Manifest, error) {
 	}
 	defer f.Close()
 
-	entries := []Entry{}
-	length := make([]byte, 1)
-	for {
-		_, err = f.Read(length)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	intHolder := make([]byte, 4)
+	byteHolder := make([]byte, 1)
 
-		path := make([]byte, length[0])
-		_, err = f.Read(path)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = f.Read(length)
-		if err != nil {
-			return nil, err
-		}
-
-		entries = append(entries, Entry{Path: string(path), Level: int8(length[0])})
+	_, err = f.Read(intHolder)
+	if err != nil {
+		return nil, err
 	}
 
-	return &Manifest{Entries: entries}, nil
+	numberOfLevels := binary.BigEndian.Uint32(intHolder)
+	entries := make([][]Entry, numberOfLevels)
+
+	for level := 0; level < int(numberOfLevels); level++ {
+		_, err = f.Read(intHolder)
+		if err != nil {
+			return nil, err
+		}
+
+		length := binary.BigEndian.Uint32(intHolder)
+		entries[level] = make([]Entry, length)
+
+		for i := 0; i < int(length); i++ {
+			_, err = f.Read(byteHolder)
+			if err != nil {
+				return nil, err
+			}
+			path := make([]byte, int(byteHolder[0]))
+
+			_, err = f.Read(path)
+			if err != nil {
+				return nil, err
+			}
+
+			entries[level][i] = Entry{Path: string(path)}
+		}
+	}
+
+	return &Manifest{Levels: entries}, nil
 }
 
-func WriteManifest(path string, ssts [][]SST) error {
+func WriteManifest(path string, levels [][]SST) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	for level, levelSsts := range ssts {
-		levelBytes := []byte{byte(level)}
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(len(levels)))
+	f.Write(b)
+	for _, levelSsts := range levels {
+		binary.BigEndian.PutUint32(b, uint32(len(levelSsts)))
+		f.Write(b)
 		for _, sst := range levelSsts {
 			f.Write([]byte{byte(len(sst.Path()))})
 			f.Write([]byte(sst.Path()))
-			f.Write(levelBytes)
 		}
 	}
 
