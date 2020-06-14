@@ -47,54 +47,35 @@ func (sst *sst) Path() string {
 	return sst.file
 }
 
-func (sst *sst) Get(key []byte) ([]byte, error) {
-	var block *block
-	for _, b := range sst.blocks {
-		if c.Compare(key, b.start) == c.LESS_THAN {
-			break
+func (sst *sst) GetBlock(key []byte) *block {
+	for _, block := range sst.blocks {
+		if c.Compare(key, block.start) != c.LESS_THAN && c.Compare(key, block.end) != c.GREATER_THAN {
+			return block
 		}
-		block = b
 	}
 
-	if block == nil {
-		return nil, nil
-	}
+	return nil
+}
 
+func (sst *sst) ReadBlock(b *block, level config.Level) ([]byte, error) {
 	f, err := os.Open(sst.file)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	f.Seek(int64(block.offset), io.SeekStart)
-	length := make([]byte, 1)
-	for {
-		_, err = f.Read(length)
-		if err != nil {
-			return nil, err
-		}
-		k := make([]byte, length[0])
-		_, err = f.Read(k)
-		if err != nil {
-			return nil, err
-		}
-
-		_, err = f.Read(length)
-		if c.Compare(key, k) == c.EQUAL {
-			v := make([]byte, length[0])
-			_, err = f.Read(v)
-			if err != nil {
-				return nil, err
-			}
-
-			return v, nil
-		} else {
-			_, err := f.Seek(int64(length[0]), io.SeekCurrent)
-			if err != nil {
-				return nil, err
-			}
-		}
+	_, err = f.Seek(int64(b.offset), io.SeekStart)
+	if err != nil {
+		return nil, err
 	}
+
+	bytes := make([]byte, level.BlockSize)
+	bytesRead, err := f.Read(bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes[:bytesRead], nil
 }
 
 func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
@@ -330,7 +311,8 @@ func OpenSst(path string) (*sst, error) {
 		f.Read(endKey)
 
 		f.Read(int64holder)
-		block := &block{start: startKey, end: endKey, offset: bytesToInt64(int64holder)}
+		offset := bytesToInt64(int64holder)
+		block := &block{start: startKey, end: endKey, offset: offset}
 		blocks[i] = block
 	}
 

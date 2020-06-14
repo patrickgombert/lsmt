@@ -133,47 +133,6 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	common.TearDown(t)
 }
 
-func TestFlushAndGet(t *testing.T) {
-	common.SetUp(t)
-
-	mt := memtable.NewMemtable()
-	mt.Write([]byte{0}, []byte{0})
-	mt.Write([]byte{1}, []byte{1})
-
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
-
-	sst, _ := OpenSst(ssts[0].file)
-	value, _ := sst.Get([]byte{1})
-
-	if c.Compare([]byte{1}, value) != c.EQUAL {
-		t.Errorf("Expected sst get to produce %q, but got %q", []byte{1}, value)
-	}
-
-	common.TearDown(t)
-}
-
-func TestFlushAndGetNotFound(t *testing.T) {
-	common.SetUp(t)
-
-	mt := memtable.NewMemtable()
-	mt.Write([]byte{0}, []byte{0})
-	mt.Write([]byte{1}, []byte{1})
-
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
-
-	sst, _ := OpenSst(ssts[0].file)
-	value, _ := sst.Get([]byte{2})
-	if value != nil {
-		t.Error("Expected non-existent key to not be found")
-	}
-
-	common.TearDown(t)
-}
-
 func TestIterFromStartOfFile(t *testing.T) {
 	common.SetUp(t)
 
