@@ -4,14 +4,17 @@ import (
 	"errors"
 
 	"github.com/patrickgombert/lsmt/common"
+	c "github.com/patrickgombert/lsmt/comparator"
 	"github.com/patrickgombert/lsmt/config"
 	mt "github.com/patrickgombert/lsmt/memtable"
+	"github.com/patrickgombert/lsmt/sst"
 )
 
 type lsmt struct {
 	options           config.Options
 	activeMemtable    *mt.Memtable
 	inactiveMemtables []*mt.Memtable
+	sstManager        sst.SSTManager
 }
 
 func Lsmt(options config.Options) (*lsmt, []error) {
@@ -20,7 +23,50 @@ func Lsmt(options config.Options) (*lsmt, []error) {
 		return nil, errs
 	}
 
-	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}}, nil
+	mostRecentManifest, err := sst.MostRecentManifest(options.Path)
+	if err != nil {
+		return nil, []error{err}
+	}
+	if mostRecentManifest == nil {
+		mostRecentManifest = &sst.Manifest{Levels: [][]sst.Entry{}}
+	}
+	sstManager, err := sst.OpenBlockBasedSSTManager(mostRecentManifest, options)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager}, nil
+}
+
+func (db *lsmt) Get(key []byte) ([]byte, error) {
+	value, found := db.activeMemtable.Get(key)
+	if found {
+		if c.Compare(value, common.Tombstone) == c.EQUAL {
+			return nil, nil
+		} else {
+			return value, nil
+		}
+	}
+	for _, mt := range db.inactiveMemtables {
+		value, found = mt.Get(key)
+		if found {
+			if c.Compare(value, common.Tombstone) == c.EQUAL {
+				return nil, nil
+			} else {
+				return value, nil
+			}
+		}
+	}
+
+	v, err := db.sstManager.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	if v != nil && c.Compare(v, common.Tombstone) != c.EQUAL {
+		return v, nil
+	}
+
+	return nil, nil
 }
 
 func (db *lsmt) Write(key, value []byte) error {
@@ -50,4 +96,31 @@ func (db *lsmt) Delete(key []byte) error {
 	db.activeMemtable.Write(key, common.Tombstone)
 
 	return nil
+}
+
+func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
+	if start == nil || len(start) == 0 {
+		return nil, errors.New("start must not be nil and must not be empty")
+	}
+	if end == nil || len(end) == 0 {
+		return nil, errors.New("end must not be nil and must not be empty")
+	}
+	if c.Compare(start, end) != c.LESS_THAN {
+		return nil, errors.New("start must be less than end")
+	}
+
+  memtable := db.activeMemtable
+  inactive := db.inactiveMemtables
+	iters := make([]common.Iterator, 2+len(inactive))
+	iters[0] = memtable.Iterator(start, end)
+	for i, inactiveMt := range inactive {
+		iters[i+1] = inactiveMt.Iterator(start, end)
+	}
+	sstIter, err := db.sstManager.Iterator(start, end)
+	if err != nil {
+		return nil, err
+	}
+	iters[len(iters)-1] = sstIter
+
+	return common.NewMergedIterator(iters), nil
 }

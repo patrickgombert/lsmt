@@ -16,6 +16,7 @@ type blockBasedLevel struct {
 	blockCache cache.Cache
 }
 
+// A manager for block based SSTs
 type BlockBasedSSTManager struct {
 	levels   []*blockBasedLevel
 	options  config.Options
@@ -45,6 +46,9 @@ func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*Bloc
 	return manager, nil
 }
 
+// Gets a value for the given key.
+// The value at the highest level will be returned. If no value is found then it will
+// return nil. Uses the write through block cache while searching for a value.
 func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
 	for i, level := range manager.levels {
 		for _, sst := range level.ssts {
@@ -59,8 +63,8 @@ func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
 				}
 
 				reader := bytes.NewReader(b)
+				length := make([]byte, 1)
 				for {
-					length := make([]byte, 1)
 					_, err = reader.Read(length)
 					if err == io.EOF {
 						return nil, nil
@@ -103,24 +107,34 @@ func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
 	return nil, nil
 }
 
+// Creates a block cached iterator for each level of SSTs. Combines each level's iterator
+// into a MergedIterator.
 func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterator, error) {
-	iterators := []common.Iterator{}
-	for _, level := range manager.levels {
-		for _, sst := range level.ssts {
-			if c.Compare(end, sst.blocks[0].start) != c.LESS_THAN {
-				iter, err := sst.Iterator(start, end)
-				if err != nil {
-					return nil, err
-				}
-
-				iterators = append(iterators, iter)
-			}
+	iterators := make([]common.Iterator, len(manager.levels))
+	for i, level := range manager.levels {
+		levelConfig := manager.options.Levels[i]
+		iter, err := NewCachedIterator(start, end, level.blockCache, level.ssts, levelConfig)
+		if err != nil {
+			return nil, err
 		}
+		iterators[i] = iter
 	}
 
 	mergedIterator := common.NewMergedIterator(iterators)
 	return mergedIterator, nil
 }
 
-func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) {
+func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) chan MergedSST {
+	c := make(chan MergedSST)
+	go func() {
+		ssts, err := Flush(options, options.Levels[0], mt)
+		if err != nil {
+			c <- MergedSST{err: err}
+		} else {
+			for _, sst := range ssts {
+				c <- MergedSST{path: sst.file}
+			}
+		}
+	}()
+	return c
 }

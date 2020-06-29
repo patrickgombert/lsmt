@@ -2,8 +2,12 @@ package sst
 
 import (
 	"encoding/binary"
+	"io/ioutil"
 	"os"
+	"strconv"
 )
+
+const manifestPrefix string = "manifest"
 
 type Entry struct {
 	Path string
@@ -11,6 +15,34 @@ type Entry struct {
 
 type Manifest struct {
 	Levels [][]Entry
+}
+
+func MostRecentManifest(dir string) (*Manifest, error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	mostRecent := -1
+	manifestFile := ""
+	for _, file := range files {
+		if file.Name()[:len(manifestPrefix)] == manifestPrefix {
+			manifestNumber, err := strconv.Atoi(file.Name()[len(manifestPrefix):])
+			if err != nil {
+				return nil, err
+			}
+			if manifestNumber > mostRecent {
+				mostRecent = manifestNumber
+				manifestFile = file.Name()
+			}
+		}
+	}
+
+	if mostRecent == -1 {
+		return nil, nil
+	} else {
+		return OpenManifest(manifestFile)
+	}
 }
 
 func OpenManifest(path string) (*Manifest, error) {
