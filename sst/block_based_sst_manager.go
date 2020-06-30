@@ -124,6 +124,10 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 	return mergedIterator, nil
 }
 
+// Flush a memable to disk.
+// This process executes in a go routine and uses a channel to communicate the results.
+// If an error occurs one MergedSST will be returned and contain the error. Otherwise,
+// the new set of ssts will all be returned over the channel.
 func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) chan MergedSST {
 	c := make(chan MergedSST)
 	go func() {
@@ -135,6 +139,7 @@ func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.
 				c <- MergedSST{path: sst.file}
 			}
 		}
+		close(c)
 	}()
 	return c
 }
