@@ -18,5 +18,5 @@ type SST interface {
 type SSTManager interface {
 	Get(key []byte) ([]byte, error)
 	Iterator(start, end []byte) (common.Iterator, error)
-	Flush(options config.Options, mt *memtable.Memtable) chan MergedSST
+	Flush(options config.Options, mt *memtable.Memtable)
 }

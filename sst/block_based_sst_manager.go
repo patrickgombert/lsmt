@@ -18,9 +18,10 @@ type blockBasedLevel struct {
 
 // A manager for block based SSTs
 type BlockBasedSSTManager struct {
-	levels   []*blockBasedLevel
-	options  config.Options
-	manifest *Manifest
+	levels    []*blockBasedLevel
+	options   config.Options
+	flushLock common.Semaphore
+	manifest  *Manifest
 }
 
 func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*BlockBasedSSTManager, error) {
@@ -42,7 +43,7 @@ func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*Bloc
 		levels[i] = l
 	}
 
-	manager := &BlockBasedSSTManager{levels: levels, options: options, manifest: manifest}
+	manager := &BlockBasedSSTManager{levels: levels, options: options, flushLock: common.NewSemaphore(1), manifest: manifest}
 	return manager, nil
 }
 
@@ -128,18 +129,11 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 // This process executes in a go routine and uses a channel to communicate the results.
 // If an error occurs one MergedSST will be returned and contain the error. Otherwise,
 // the new set of ssts will all be returned over the channel.
-func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) chan MergedSST {
-	c := make(chan MergedSST)
-	go func() {
-		ssts, err := Flush(options, options.Levels[0], mt)
-		if err != nil {
-			c <- MergedSST{err: err}
-		} else {
-			for _, sst := range ssts {
-				c <- MergedSST{path: sst.file}
-			}
-		}
-		close(c)
-	}()
-	return c
+func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) {
+	if manager.flushLock.TryLock() {
+		go func() {
+			defer manager.flushLock.Unlock()
+			// TODO: Merge down
+		}()
+	}
 }
