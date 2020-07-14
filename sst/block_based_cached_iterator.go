@@ -72,6 +72,30 @@ func NewCachedIterator(start, end []byte, blockCache cache.Cache, ssts []*sst, l
 	return &cachedIterator{closed: true}, nil
 }
 
+// Returns a new unbounded iterator which uses the block cache when fetching blocks.
+// Since the block cache and config are scoped to a level, the iterator also only
+// iterates over a single level.
+func NewCachedUnboundedIterator(blockCache cache.Cache, ssts []*sst, level config.Level) (common.Iterator, error) {
+	if len(ssts) == 0 {
+		return &cachedIterator{closed: true}, nil
+	}
+	if len(ssts[0].blocks) == 0 {
+		return &cachedIterator{closed: true}, nil
+	}
+
+	s := ssts[0]
+	bl := s.blocks[0]
+	b, err := blockCache.Get(bl, func(arg cache.Shardable) ([]byte, error) {
+		return s.ReadBlock(arg.(*block), level)
+	})
+	if err != nil {
+		return nil, err
+	}
+	reader := bytes.NewReader(b)
+
+	return &cachedIterator{end: nil, level: level, blockCache: blockCache, ssts: ssts, sstIndex: 0, block: reader, blockIndex: 0, closed: false}, nil
+}
+
 // Returns whether there is a next value. If necessary, calling Next will move the
 // block index and block reader to the next block as well as move the sst index to the
 // next SST.

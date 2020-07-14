@@ -31,6 +31,7 @@ func TestIteratorFromStartAndDoesNotHitEndKey(t *testing.T) {
 
 	iter := mt.Iterator([]byte{0, 0}, []byte{1, 1, 1, 1})
 	defer iter.Close()
+
 	common.CompareNext(iter, true, t)
 	common.CompareGet(iter, []byte{0, 1}, []byte{0, 1}, t)
 	common.CompareNext(iter, true, t)
@@ -49,6 +50,7 @@ func TestIteratorFromStartDoesHitEndKey(t *testing.T) {
 
 	iter := mt.Iterator([]byte{}, []byte{1, 1})
 	defer iter.Close()
+
 	common.CompareNext(iter, true, t)
 	common.CompareGet(iter, []byte{0}, []byte{0}, t)
 	common.CompareNext(iter, true, t)
@@ -66,6 +68,25 @@ func TestIteratorPastStart(t *testing.T) {
 
 	iter := mt.Iterator([]byte{1}, []byte{3})
 	defer iter.Close()
+
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1}, []byte{1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{2}, []byte{2}, t)
+	common.CompareNext(iter, false, t)
+}
+
+func TestUnboundedIterator(t *testing.T) {
+	mt := NewMemtable()
+	mt.Write([]byte{0}, []byte{0})
+	mt.Write([]byte{1}, []byte{1})
+	mt.Write([]byte{2}, []byte{2})
+
+	iter := mt.UnboundedIterator()
+	defer iter.Close()
+
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{0}, []byte{0}, t)
 	common.CompareNext(iter, true, t)
 	common.CompareGet(iter, []byte{1}, []byte{1}, t)
 	common.CompareNext(iter, true, t)

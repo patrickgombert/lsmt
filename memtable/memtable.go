@@ -321,6 +321,10 @@ func (memtable *Memtable) Write(key, value []byte) {
 	}
 }
 
+func (memtable *Memtable) Bytes() int64 {
+	return memtable.sortedMap.bytes
+}
+
 func addNode(root persistentNode, key, value []byte) (persistentNode, bool) {
 	if root == nil {
 		pair := common.Pair{Key: key, Value: value}

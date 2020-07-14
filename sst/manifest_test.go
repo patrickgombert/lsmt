@@ -16,14 +16,18 @@ func (s *testSst) Path() string {
 
 func TestWriteAndReadManifest(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	levels := make([][]SST, 2)
 	levels[0] = []SST{&testSst{path: "./file0.sst"}}
 	levels[1] = []SST{&testSst{path: "./file1.sst"}}
 
-	WriteManifest(common.TEST_DIR+"manifest", levels)
-	manifest, _ := OpenManifest(common.TEST_DIR + "manifest")
+	WriteManifest(common.TEST_DIR+"manifest1", levels)
+	manifest, _ := OpenManifest(common.TEST_DIR, "manifest1")
 
+	if manifest.Version != 1 {
+		t.Errorf("Expected manifest to have version %d, but got %d", 1, manifest.Version)
+	}
 	if len(manifest.Levels) != 2 {
 		t.Errorf("Expected %d manifest levels, but got %d", 2, len(manifest.Levels))
 	}
@@ -41,6 +45,4 @@ func TestWriteAndReadManifest(t *testing.T) {
 	if level1[0].Path != "./file1.sst" {
 		t.Errorf("Expected level 1 / entry 1 to have file path %q, but got %q", "./file1.sst", level1[0].Path)
 	}
-
-	common.TearDown(t)
 }

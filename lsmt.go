@@ -90,6 +90,10 @@ func (db *lsmt) Write(key, value []byte) error {
 	}
 
 	db.activeMemtable.Write(key, value)
+	err := db.checkFlush()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -101,6 +105,28 @@ func (db *lsmt) Delete(key []byte) error {
 	}
 
 	db.activeMemtable.Write(key, common.Tombstone)
+	err := db.checkFlush()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Check to see if the active memtable is ready to be flushed to disk.
+func (db *lsmt) checkFlush() error {
+	if db.activeMemtable.Bytes() > db.options.MemtableMaximumSize {
+		db.inactiveMemtables = append(db.inactiveMemtables, db.activeMemtable)
+		db.activeMemtable = mt.NewMemtable()
+		newManager, err := db.sstManager.Flush(db.inactiveMemtables)
+		if err != nil {
+			return err
+		}
+		if newManager != nil {
+			db.inactiveMemtables = []*mt.Memtable{}
+			db.sstManager = newManager
+		}
+	}
 
 	return nil
 }

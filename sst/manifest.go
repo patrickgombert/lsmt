@@ -14,7 +14,8 @@ type Entry struct {
 }
 
 type Manifest struct {
-	Levels [][]Entry
+	Levels  [][]Entry
+	Version int
 }
 
 func MostRecentManifest(dir string) (*Manifest, error) {
@@ -41,12 +42,21 @@ func MostRecentManifest(dir string) (*Manifest, error) {
 	if mostRecent == -1 {
 		return nil, nil
 	} else {
-		return OpenManifest(manifestFile)
+		return OpenManifest(dir, manifestFile)
 	}
 }
 
-func OpenManifest(path string) (*Manifest, error) {
-	f, err := os.Open(path)
+func OpenManifest(dir, path string) (*Manifest, error) {
+	version, err := strconv.Atoi(path[len(manifestPrefix):])
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = os.Stat(dir + path)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	f, err := os.Open(dir + path)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +98,7 @@ func OpenManifest(path string) (*Manifest, error) {
 		}
 	}
 
-	return &Manifest{Levels: entries}, nil
+	return &Manifest{Levels: entries, Version: version}, nil
 }
 
 func WriteManifest(path string, levels [][]SST) error {

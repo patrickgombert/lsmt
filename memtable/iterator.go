@@ -15,8 +15,8 @@ type memtableIterator struct {
 // Creates a new bounded iterator for the current state of the memtable.
 // Since the memtable is backed by a persistent data structure, this reflects a point in
 // time snapshot of the memtable.
-func (memtable *Memtable) Iterator(start, end []byte) *memtableIterator {
-	stack := make([]persistentNode, 0)
+func (memtable *Memtable) Iterator(start, end []byte) common.Iterator {
+	stack := []persistentNode{}
 	node := memtable.sortedMap.root
 	if node == nil {
 		return &memtableIterator{init: false, stack: stack, end: end}
@@ -30,8 +30,21 @@ func (memtable *Memtable) Iterator(start, end []byte) *memtableIterator {
 	return &memtableIterator{init: false, stack: stack, end: end}
 }
 
+// Creates a new unbounded iterator for the current state of the memtable.
+// Since the memtable is backed by a persistent data structure, this reflects a point in
+// time snapshot of the memtable.
+func (memtable *Memtable) UnboundedIterator() common.Iterator {
+	stack := []persistentNode{}
+	node := memtable.sortedMap.root
+	if node == nil {
+		return &memtableIterator{init: false, stack: stack, end: nil}
+	}
+	stack = appendStack(nil, node, stack)
+	return &memtableIterator{init: false, stack: stack, end: nil}
+}
+
 // Moves the iterator forward. Returns false when either the end of the tree has been
-// reached or if the end key has been passed.
+// reached or if the end key has been passed (if the iterator is bounded).
 // The Next() call should never error, but returns a nil error in order to
 // satisfy the Iterator interface.
 func (iter *memtableIterator) Next() (bool, error) {
@@ -51,8 +64,8 @@ func (iter *memtableIterator) Next() (bool, error) {
 	} else {
 		idx = len(iter.stack) - 1
 		node = iter.stack[idx]
-		if c.Compare(node.getPair().Key, iter.end) == c.GREATER_THAN {
-			iter.stack = make([]persistentNode, 0)
+		if iter.end != nil && c.Compare(node.getPair().Key, iter.end) == c.GREATER_THAN {
+			iter.stack = []persistentNode{}
 			return false, nil
 		} else {
 			return true, nil

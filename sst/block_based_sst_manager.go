@@ -3,6 +3,7 @@ package sst
 import (
 	"bytes"
 	"io"
+	"strconv"
 
 	"github.com/patrickgombert/lsmt/cache"
 	"github.com/patrickgombert/lsmt/common"
@@ -125,15 +126,68 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 	return mergedIterator, nil
 }
 
-// Flush a memable to disk.
-// This process executes in a go routine and uses a channel to communicate the results.
-// If an error occurs one MergedSST will be returned and contain the error. Otherwise,
-// the new set of ssts will all be returned over the channel.
-func (manager *BlockBasedSSTManager) Flush(options config.Options, mt *memtable.Memtable) {
+// Flush a memable to disk. Calling Flush will also trigger compaction.
+// A lock is used to ensure that only one flush operation can happen at a time.
+func (manager *BlockBasedSSTManager) Flush(tables []*memtable.Memtable) (SSTManager, error) {
 	if manager.flushLock.TryLock() {
-		go func() {
-			defer manager.flushLock.Unlock()
-			// TODO: Merge down
-		}()
+		defer manager.flushLock.Unlock()
+
+		// this is naive, but check if we can optimistically fit on the first level and if
+		// not then just flush to the second and so forth.
+		iters := make([]common.Iterator, len(tables))
+		levelOptions := manager.options.Levels[0]
+		for i, mt := range tables {
+			iters[i] = mt.UnboundedIterator()
+		}
+		if len(manager.levels) > 0 {
+			level := manager.levels[0]
+			levelIter, err := NewCachedUnboundedIterator(level.blockCache, level.ssts, levelOptions)
+			if err != nil {
+				return nil, err
+			}
+			iters = append(iters, levelIter)
+		}
+		mergedIter := common.NewMergedIterator(iters)
+
+		ssts, err := Flush(manager.options, manager.options.Levels[0], mergedIter)
+		if err != nil {
+			return nil, err
+		}
+
+		cache := cache.NewShardedLRUCache(levelOptions.BlockCacheShards, levelOptions.BlockCacheSize)
+		newLevel := &blockBasedLevel{ssts: ssts, blockCache: cache}
+
+		// Create a new SSTManager
+		newLevels := make([]*blockBasedLevel, len(manager.levels))
+		copy(newLevels, manager.levels)
+		if len(newLevels) > 0 {
+			newLevels[0] = newLevel
+		} else {
+			newLevels = append(newLevels, newLevel)
+		}
+		manifestLevels := make([][]SST, len(newLevels))
+		for i, l := range newLevels {
+			innerLevel := make([]SST, len(l.ssts))
+			for j, s := range l.ssts {
+				innerLevel[j] = s
+			}
+			manifestLevels[i] = innerLevel
+		}
+
+		path := manager.options.Path + manifestPrefix + strconv.Itoa(manager.manifest.Version+1)
+		err = WriteManifest(path, manifestLevels)
+		if err != nil {
+			return nil, err
+		}
+		newManifest, err := MostRecentManifest(manager.options.Path)
+		if err != nil {
+			return nil, err
+		}
+
+		sstManager := &BlockBasedSSTManager{levels: newLevels, options: manager.options, flushLock: manager.flushLock, manifest: newManifest}
+
+		return sstManager, nil
 	}
+
+	return nil, nil
 }

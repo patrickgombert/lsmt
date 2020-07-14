@@ -4,14 +4,16 @@ import (
 	"testing"
 
 	"github.com/patrickgombert/lsmt/common"
+	c "github.com/patrickgombert/lsmt/comparator"
 	"github.com/patrickgombert/lsmt/config"
 )
 
-var sink config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheSize: 1000}
+var sink config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000}
 var options config.Options = config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, Path: common.TEST_DIR}
 
 func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write(nil, []byte{0})
@@ -22,12 +24,11 @@ func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected lsmt to error when writing empty key, but did not")
 	}
-
-	common.TearDown(t)
 }
 
 func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Write([]byte{0}, nil)
@@ -38,12 +39,11 @@ func TestWriteNilOrEmptyValueReturnsError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected lsmt to error when writing empty value, but did not")
 	}
-
-	common.TearDown(t)
 }
 
 func TestDeleteNilOrEmptyKeyReturnsError(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	err := lsmt.Delete(nil)
@@ -54,12 +54,11 @@ func TestDeleteNilOrEmptyKeyReturnsError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected lsmt to error when deleting empty key, but did not")
 	}
-
-	common.TearDown(t)
 }
 
 func TestIteratorStartNilOrEmptyReturnsError(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	_, err := lsmt.Iterator(nil, []byte{1})
@@ -70,12 +69,11 @@ func TestIteratorStartNilOrEmptyReturnsError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected lsmt to error when creating an iterator with an empty start value, but did not")
 	}
-
-	common.TearDown(t)
 }
 
 func TestIteratorEndNilOrEmptyreturnsError(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	_, err := lsmt.Iterator([]byte{1}, nil)
@@ -86,18 +84,34 @@ func TestIteratorEndNilOrEmptyreturnsError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected lsmt to error when creating an iterator with an empty end value, but did not")
 	}
-
-	common.TearDown(t)
 }
 
 func TestIteratorStartNotLessThanEnd(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	lsmt, _ := Lsmt(options)
 	_, err := lsmt.Iterator([]byte{1}, []byte{0})
 	if err == nil {
 		t.Error("Expected lsmt to error when the start key is not less than the end key when creating an iterator, but did not")
 	}
+}
 
-	common.TearDown(t)
+func TestFlushWithoutExistingLevel(t *testing.T) {
+	common.SetUp(t)
+	defer common.TearDown(t)
+
+	sink := config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000}
+	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
+	lsmt, _ := Lsmt(options)
+	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
+
+	openedLsmt, err := Lsmt(options)
+	if err != nil {
+		t.Errorf("Error opening lsmt %q", err)
+	}
+	result, _ := openedLsmt.Get([]byte{1, 1, 1, 1, 1, 1})
+	if c.Compare(result, []byte{1, 1, 1, 1, 1, 1}) != c.EQUAL {
+		t.Errorf("Expected opened lsmt to contain %q, but did not", []byte{1, 1, 1, 1, 1, 1})
+	}
 }

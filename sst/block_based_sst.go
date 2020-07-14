@@ -12,7 +12,6 @@ import (
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
 	"github.com/patrickgombert/lsmt/config"
-	"github.com/patrickgombert/lsmt/memtable"
 )
 
 type block struct {
@@ -208,9 +207,9 @@ func (iter *sstIterator) Close() error {
 	return err
 }
 
-func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([]*sst, error) {
-	if mt == nil {
-		return nil, errors.New("unable to flush nil memtable")
+func Flush(options config.Options, level config.Level, iter common.Iterator) ([]*sst, error) {
+	if iter == nil {
+		return nil, errors.New("unable to flush nil iterator")
 	}
 
 	var err error
@@ -221,8 +220,6 @@ func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([
 	var blocks []*block
 	var currentBlock *block
 	var previousPair *common.Pair
-	// TODO implement an unbounded iterator
-	iter := mt.Iterator([]byte{}, []byte{255, 255, 255, 255, 255, 255, 255, 255})
 
 	bytesWritten := int64(0)
 	currentBlockSize := int64(0)
@@ -230,46 +227,48 @@ func Flush(options config.Options, level config.Level, mt *memtable.Memtable) ([
 
 	for next {
 		pair, _ := iter.Get()
-		recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
+		if c.Compare(pair.Key, common.Tombstone) != c.EQUAL {
+			recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
 
-		if bytesWritten+recordLength > level.SSTSize {
-			ssts[len(ssts)-1].metaOffset = bytesWritten
-			currentBlock.end = previousPair.Key
-			writeMeta(w, bytesWritten, blocks)
-			f.Close()
-			f = nil
-		}
-
-		if f == nil {
-			f, err = newFile(options.Path)
-			if err != nil {
-				return nil, err
+			if bytesWritten+recordLength > level.SSTSize {
+				ssts[len(ssts)-1].metaOffset = bytesWritten
+				currentBlock.end = previousPair.Key
+				writeMeta(w, bytesWritten, blocks)
+				f.Close()
+				f = nil
 			}
-			w = bufio.NewWriter(f)
-			currentBlock = &block{start: pair.Key, offset: 0}
-			blocks = []*block{currentBlock}
-			ssts = append(ssts, &sst{file: f.Name(), blocks: blocks})
-			bytesWritten = 0
-			currentBlockSize = 0
+
+			if f == nil {
+				f, err = newFile(options.Path)
+				if err != nil {
+					return nil, err
+				}
+				w = bufio.NewWriter(f)
+				currentBlock = &block{start: pair.Key, offset: 0}
+				blocks = []*block{currentBlock}
+				ssts = append(ssts, &sst{file: f.Name(), blocks: blocks})
+				bytesWritten = 0
+				currentBlockSize = 0
+			}
+
+			if currentBlockSize+recordLength > level.BlockSize {
+				currentBlock.end = previousPair.Key
+				currentBlock = &block{start: pair.Key, offset: bytesWritten}
+				currentBlockSize = 0
+				blocks = append(blocks, currentBlock)
+				w.Flush()
+			}
+
+			w.WriteByte(byte(len(pair.Key)))
+			w.Write(pair.Key)
+			w.WriteByte(byte(len(pair.Value)))
+			w.Write(pair.Value)
+
+			bytesWritten += recordLength
+			currentBlockSize += recordLength
+			next, _ = iter.Next()
+			previousPair = pair
 		}
-
-		if currentBlockSize+recordLength > level.BlockSize {
-			currentBlock.end = previousPair.Key
-			currentBlock = &block{start: pair.Key, offset: bytesWritten}
-			currentBlockSize = 0
-			blocks = append(blocks, currentBlock)
-			w.Flush()
-		}
-
-		w.WriteByte(byte(len(pair.Key)))
-		w.Write(pair.Key)
-		w.WriteByte(byte(len(pair.Value)))
-		w.Write(pair.Value)
-
-		bytesWritten += recordLength
-		currentBlockSize += recordLength
-		next, _ = iter.Next()
-		previousPair = pair
 	}
 
 	ssts[len(ssts)-1].metaOffset = bytesWritten

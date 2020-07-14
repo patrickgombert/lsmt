@@ -20,18 +20,17 @@ func TestFlushNilMemtable(t *testing.T) {
 
 func TestFlush(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{1}, []byte{1})
 
 	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	_, err := Flush(options, levels[0], mt)
+	_, err := Flush(options, levels[0], mt.UnboundedIterator())
 	if err != nil {
 		t.Errorf("Failed to flush memtable with error %q", err)
 	}
-
-	common.TearDown(t)
 }
 
 func TestOpenErrorFileNotFound(t *testing.T) {
@@ -43,6 +42,7 @@ func TestOpenErrorFileNotFound(t *testing.T) {
 
 func TestFlushAndOpen(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
@@ -50,7 +50,7 @@ func TestFlushAndOpen(t *testing.T) {
 
 	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
+	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	if sst.file != ssts[0].file {
@@ -71,12 +71,11 @@ func TestFlushAndOpen(t *testing.T) {
 	if c.Compare([]byte{1}, sst.blocks[1].end) != c.EQUAL {
 		t.Errorf("Expected opened sst block 1 to end at %q, but got %q", []byte{1}, sst.blocks[1].start)
 	}
-
-	common.TearDown(t)
 }
 
 func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
@@ -90,7 +89,7 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 
 	levels := []config.Level{config.Level{BlockSize: 8, SSTSize: 16}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
+	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
 
 	if len(ssts) != 2 {
 		t.Errorf("Expected to flush %d tables, but flushed %d", 2, len(ssts))
@@ -129,12 +128,11 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	if c.Compare([]byte{7}, sst1.blocks[1].end) != c.EQUAL {
 		t.Errorf("Expected opened sst block 1 to end at %q, but got %q", []byte{7}, sst1.blocks[1].end)
 	}
-
-	common.TearDown(t)
 }
 
 func TestIterFromStartOfFile(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{1}, []byte{1, 1})
@@ -142,7 +140,7 @@ func TestIterFromStartOfFile(t *testing.T) {
 
 	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
+	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{3})
@@ -153,12 +151,11 @@ func TestIterFromStartOfFile(t *testing.T) {
 	common.CompareNext(iter, true, t)
 	common.CompareGet(iter, []byte{2}, []byte{2, 2}, t)
 	common.CompareNext(iter, false, t)
-
-	common.TearDown(t)
 }
 
 func TestIterStartsMidBlock(t *testing.T) {
 	common.SetUp(t)
+	defer common.TearDown(t)
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{1}, []byte{1, 1})
@@ -167,7 +164,7 @@ func TestIterStartsMidBlock(t *testing.T) {
 
 	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt)
+	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{2})
@@ -178,6 +175,4 @@ func TestIterStartsMidBlock(t *testing.T) {
 	common.CompareNext(iter, true, t)
 	common.CompareGet(iter, []byte{2}, []byte{2, 2}, t)
 	common.CompareNext(iter, false, t)
-
-	common.TearDown(t)
 }
