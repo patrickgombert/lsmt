@@ -2,6 +2,8 @@ package lsmt
 
 import (
 	"errors"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
@@ -15,6 +17,7 @@ type lsmt struct {
 	activeMemtable    *mt.Memtable
 	inactiveMemtables []*mt.Memtable
 	sstManager        sst.SSTManager
+	flushLock         common.Semaphore
 }
 
 // Creates a new log-structured merge-tree in accordance with the options provided.
@@ -38,7 +41,7 @@ func Lsmt(options config.Options) (*lsmt, []error) {
 		return nil, []error{err}
 	}
 
-	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager}, nil
+	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager, flushLock: common.NewSemaphore(1)}, nil
 }
 
 // Get the value for a given key. If the key does not exist then the value will be nil.
@@ -90,10 +93,7 @@ func (db *lsmt) Write(key, value []byte) error {
 	}
 
 	db.activeMemtable.Write(key, value)
-	err := db.checkFlush()
-	if err != nil {
-		return err
-	}
+	db.checkFlush()
 
 	return nil
 }
@@ -105,30 +105,27 @@ func (db *lsmt) Delete(key []byte) error {
 	}
 
 	db.activeMemtable.Write(key, common.Tombstone)
-	err := db.checkFlush()
-	if err != nil {
-		return err
-	}
+	db.checkFlush()
 
 	return nil
 }
 
 // Check to see if the active memtable is ready to be flushed to disk.
-func (db *lsmt) checkFlush() error {
-	if db.activeMemtable.Bytes() > db.options.MemtableMaximumSize {
-		db.inactiveMemtables = append(db.inactiveMemtables, db.activeMemtable)
-		db.activeMemtable = mt.NewMemtable()
-		newManager, err := db.sstManager.Flush(db.inactiveMemtables)
-		if err != nil {
-			return err
-		}
-		if newManager != nil {
-			db.inactiveMemtables = []*mt.Memtable{}
-			db.sstManager = newManager
-		}
+func (db *lsmt) checkFlush() {
+	if (db.activeMemtable.Bytes() > db.options.MemtableMaximumSize) && db.flushLock.TryLock() {
+		newTable := mt.NewMemtable()
+		unsafeActive := (*unsafe.Pointer)(unsafe.Pointer(&db.activeMemtable))
+		active := atomic.SwapPointer(unsafeActive, unsafe.Pointer(&newTable))
+		db.inactiveMemtables = append(db.inactiveMemtables, (*mt.Memtable)(active))
+		go func() {
+			defer db.flushLock.Unlock()
+			newManager, err := db.sstManager.Flush(db.inactiveMemtables)
+			if err == nil && newManager != nil {
+				db.inactiveMemtables = []*mt.Memtable{}
+				db.sstManager = newManager
+			}
+		}()
 	}
-
-	return nil
 }
 
 // Creates a bounded iterator bounded by the start and end inclusive.

@@ -105,6 +105,9 @@ func TestFlushWithoutExistingLevel(t *testing.T) {
 	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
 	lsmt, _ := Lsmt(options)
 	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
+	// TODO: Implement a Close() function that will wait until it finishes
+	for lsmt.flushLock.IsLocked() {
+	}
 
 	openedLsmt, err := Lsmt(options)
 	if err != nil {

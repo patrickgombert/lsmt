@@ -12,6 +12,11 @@ func NewSemaphore(size int) Semaphore {
 	return s
 }
 
+// Returns true is the semaphore is fully locked, false if there are still slots available
+func (s Semaphore) IsLocked() bool {
+	return len(s) == 0
+}
+
 // Try to acquire a lock, returns true if the lock was acquired and false otherwise.
 // It is assumed that all calls to TryLock which succeed will be responsible for their
 // own call to Unlock.
