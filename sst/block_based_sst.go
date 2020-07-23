@@ -271,10 +271,12 @@ func Flush(options config.Options, level config.Level, iter common.Iterator) ([]
 		}
 	}
 
-	ssts[len(ssts)-1].metaOffset = bytesWritten
-	currentBlock.end = previousPair.Key
-	writeMeta(w, bytesWritten, blocks)
-	f.Close()
+	if len(ssts) > 0 {
+		ssts[len(ssts)-1].metaOffset = bytesWritten
+		currentBlock.end = previousPair.Key
+		writeMeta(w, bytesWritten, blocks)
+		f.Close()
+	}
 
 	return ssts, nil
 }

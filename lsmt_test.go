@@ -97,6 +97,23 @@ func TestIteratorStartNotLessThanEnd(t *testing.T) {
 	}
 }
 
+func TestDoesNotAcceptWritesAfterClose(t *testing.T) {
+	common.SetUp(t)
+	defer common.TearDown(t)
+
+	lsmt, _ := Lsmt(options)
+	lsmt.Close()
+
+	err := lsmt.Write([]byte{0}, []byte{0})
+	if err == nil {
+		t.Error("Expected closed lsmt to not accept writes, but did")
+	}
+	err = lsmt.Delete([]byte{0})
+	if err == nil {
+		t.Error("Expected closed lsmt to not accept deletes, but did")
+	}
+}
+
 func TestFlushWithoutExistingLevel(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
@@ -105,9 +122,7 @@ func TestFlushWithoutExistingLevel(t *testing.T) {
 	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
 	lsmt, _ := Lsmt(options)
 	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
-	// TODO: Implement a Close() function that will wait until it finishes
-	for lsmt.flushLock.IsLocked() {
-	}
+	lsmt.Close()
 
 	openedLsmt, err := Lsmt(options)
 	if err != nil {

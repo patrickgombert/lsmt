@@ -94,7 +94,7 @@ func (node *blackNode) blacken() persistentNode {
 }
 
 func (node *blackNode) redden() persistentNode {
-	return &redNode{pair: node.pair}
+	return &redNode{pair: node.getPair()}
 }
 
 func (node *blackNode) replace(pair common.Pair, left, right persistentNode) persistentNode {
@@ -110,10 +110,16 @@ func (node *blackBranch) getPair() common.Pair {
 }
 
 func (node *blackBranch) getLeft() persistentNode {
+	if node.left == nil {
+		return nil
+	}
 	return node.left
 }
 
 func (node *blackBranch) getRight() persistentNode {
+	if node.right == nil {
+		return nil
+	}
 	return node.right
 }
 
@@ -138,7 +144,7 @@ func (node *blackBranch) blacken() persistentNode {
 }
 
 func (node *blackBranch) redden() persistentNode {
-	return &redBranch{pair: node.pair, left: node.left, right: node.right}
+	return &redBranch{pair: node.getPair(), left: node.getLeft(), right: node.getRight()}
 }
 
 func (node *blackBranch) replace(pair common.Pair, left, right persistentNode) persistentNode {
@@ -162,11 +168,11 @@ func (node *redNode) getRight() persistentNode {
 }
 
 func (node *redNode) addLeft(left persistentNode) persistentNode {
-	return makeRedNode(node.pair, left, nil)
+	return makeRedNode(node.getPair(), left, nil)
 }
 
 func (node *redNode) addRight(right persistentNode) persistentNode {
-	return makeRedNode(node.pair, nil, right)
+	return makeRedNode(node.getPair(), nil, right)
 }
 
 func (node *redNode) balanceLeft(other persistentNode) persistentNode {
@@ -178,7 +184,7 @@ func (node *redNode) balanceRight(other persistentNode) persistentNode {
 }
 
 func (node *redNode) blacken() persistentNode {
-	return &blackNode{pair: node.pair}
+	return &blackNode{pair: node.getPair()}
 }
 
 func (node *redNode) redden() persistentNode {
@@ -198,29 +204,35 @@ func (node *redBranch) getPair() common.Pair {
 }
 
 func (node *redBranch) getLeft() persistentNode {
+	if node.left == nil {
+		return nil
+	}
 	return node.left
 }
 
 func (node *redBranch) getRight() persistentNode {
+	if node.right == nil {
+		return nil
+	}
 	return node.right
 }
 
 func (node *redBranch) addLeft(left persistentNode) persistentNode {
-	return makeRedNode(node.pair, left, node.right)
+	return makeRedNode(node.getPair(), left, node.getRight())
 }
 
 func (node *redBranch) addRight(right persistentNode) persistentNode {
-	return makeRedNode(node.pair, node.left, right)
+	return makeRedNode(node.getPair(), node.getLeft(), right)
 }
 
 func (node *redBranch) balanceLeft(other persistentNode) persistentNode {
-	if node.left != nil && node.left.getColor() == RED {
-		blackenedNode := makeBlackNode(other.getPair(), node.right, other.getRight())
-		return makeRedNode(node.pair, node.left.blacken(), blackenedNode)
-	} else if node.right != nil && node.right.getColor() == RED {
-		blackenedLeftNode := makeBlackNode(node.pair, node.left, node.right.getLeft())
-		blackenedRightNode := makeBlackNode(other.getPair(), node.right.getRight(), other.getRight())
-		pair := common.Pair{Key: node.right.getPair().Key, Value: node.right.getPair().Value}
+	if node.getLeft() != nil && node.getLeft().getColor() == RED {
+		blackenedNode := makeBlackNode(other.getPair(), node.getRight(), other.getRight())
+		return makeRedNode(node.getPair(), node.getLeft().blacken(), blackenedNode)
+	} else if node.getRight() != nil && node.getRight().getColor() == RED {
+		blackenedLeftNode := makeBlackNode(node.getPair(), node.getLeft(), node.getRight().getLeft())
+		blackenedRightNode := makeBlackNode(other.getPair(), node.getRight().getRight(), other.getRight())
+		pair := common.Pair{Key: node.getRight().getPair().Key, Value: node.getRight().getPair().Value}
 		return makeRedNode(pair, blackenedLeftNode, blackenedRightNode)
 	} else {
 		return makeBlackNode(other.getPair(), node, other.getRight())
@@ -228,13 +240,13 @@ func (node *redBranch) balanceLeft(other persistentNode) persistentNode {
 }
 
 func (node *redBranch) balanceRight(other persistentNode) persistentNode {
-	if node.right != nil && node.right.getColor() == RED {
-		blackenedNode := makeBlackNode(other.getPair(), other.getLeft(), node.left)
-		return makeRedNode(node.pair, blackenedNode, node.right.blacken())
-	} else if node.left != nil && node.left.getColor() == RED {
-		blackenedLeftNode := makeBlackNode(other.getPair(), other.getLeft(), node.left.getLeft())
-		blackenedRightNode := makeBlackNode(node.pair, node.left.getRight(), node.right)
-		pair := common.Pair{Key: node.left.getPair().Key, Value: node.left.getPair().Value}
+	if node.getRight() != nil && node.getRight().getColor() == RED {
+		blackenedNode := makeBlackNode(other.getPair(), other.getLeft(), node.getLeft())
+		return makeRedNode(node.getPair(), blackenedNode, node.getRight().blacken())
+	} else if node.getLeft() != nil && node.getLeft().getColor() == RED {
+		blackenedLeftNode := makeBlackNode(other.getPair(), other.getLeft(), node.getLeft().getLeft())
+		blackenedRightNode := makeBlackNode(node.getPair(), node.getLeft().getRight(), node.getRight())
+		pair := common.Pair{Key: node.getLeft().getPair().Key, Value: node.getLeft().getPair().Value}
 		return makeRedNode(pair, blackenedLeftNode, blackenedRightNode)
 	} else {
 		return makeBlackNode(other.getPair(), other.getLeft(), node)
@@ -242,7 +254,7 @@ func (node *redBranch) balanceRight(other persistentNode) persistentNode {
 }
 
 func (node *redBranch) blacken() persistentNode {
-	return &blackBranch{node.pair, node.left, node.right}
+	return &blackBranch{node.getPair(), node.getLeft(), node.getRight()}
 }
 
 func (node *redBranch) redden() persistentNode {
@@ -269,6 +281,13 @@ func makeRedNode(pair common.Pair, left, right persistentNode) persistentNode {
 	}
 }
 
+func (m *persistentSortedMap) getRoot() persistentNode {
+	if m.root == nil {
+		return nil
+	}
+	return m.root
+}
+
 // Creates a new instance of a Memtable
 func NewMemtable() *Memtable {
 	sortedMap := &persistentSortedMap{root: nil, count: 0, bytes: 0}
@@ -278,7 +297,7 @@ func NewMemtable() *Memtable {
 // Returns the value for a given key. The second return value signals whether the key was
 // found or not found.
 func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
-	node := memtable.sortedMap.root
+	node := memtable.sortedMap.getRoot()
 	for {
 		if node == nil {
 			return nil, false
@@ -301,16 +320,16 @@ func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
 
 func (memtable *Memtable) Write(key, value []byte) {
 	sortedMap := memtable.sortedMap
-	if sortedMap.root == nil {
+	if sortedMap.getRoot() == nil {
 		pair := common.Pair{Key: key, Value: value}
 		root := &redNode{pair: pair}
 		bytes := leni64(key) + leni64(value)
 		memtable.sortedMap = &persistentSortedMap{root: root, count: 1, bytes: bytes}
 	} else {
-		node, existed := addNode(sortedMap.root, key, value)
+		node, existed := addNode(sortedMap.getRoot(), key, value)
 		if existed && c.Compare(value, node.getPair().Value) != c.EQUAL {
 			bytes := (sortedMap.bytes - leni64(node.getPair().Value)) + leni64(value)
-			root := replaceNode(sortedMap.root, key, value)
+			root := replaceNode(sortedMap.getRoot(), key, value)
 			memtable.sortedMap = &persistentSortedMap{root: root, count: sortedMap.count, bytes: bytes}
 		} else {
 			blackenedNode := node.blacken()

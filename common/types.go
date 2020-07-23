@@ -14,3 +14,6 @@ type Iterator interface {
 	Get() (*Pair, error)
 	Close() error
 }
+
+// Tombstones are values used to represent a deleted key
+var Tombstone = []byte{}

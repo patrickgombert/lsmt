@@ -18,6 +18,7 @@ type lsmt struct {
 	inactiveMemtables []*mt.Memtable
 	sstManager        sst.SSTManager
 	flushLock         common.Semaphore
+	closed            bool
 }
 
 // Creates a new log-structured merge-tree in accordance with the options provided.
@@ -41,7 +42,7 @@ func Lsmt(options config.Options) (*lsmt, []error) {
 		return nil, []error{err}
 	}
 
-	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager, flushLock: common.NewSemaphore(1)}, nil
+	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager, flushLock: common.NewSemaphore(1), closed: false}, nil
 }
 
 // Get the value for a given key. If the key does not exist then the value will be nil.
@@ -79,6 +80,9 @@ func (db *lsmt) Get(key []byte) ([]byte, error) {
 // Write a key/value pair. If an error is returned then the key/value pair will not have
 // been written.
 func (db *lsmt) Write(key, value []byte) error {
+	if db.closed {
+		return errors.New("lsmt is closed")
+	}
 	if key == nil || len(key) == 0 {
 		return errors.New("key must not be nil and must not be empty")
 	}
@@ -100,6 +104,9 @@ func (db *lsmt) Write(key, value []byte) error {
 
 // Deletes a key/value pair.
 func (db *lsmt) Delete(key []byte) error {
+	if db.closed {
+		return errors.New("lsmt is closed")
+	}
 	if key == nil || len(key) == 0 {
 		return errors.New("key must not be nil and must not be empty")
 	}
@@ -108,24 +115,6 @@ func (db *lsmt) Delete(key []byte) error {
 	db.checkFlush()
 
 	return nil
-}
-
-// Check to see if the active memtable is ready to be flushed to disk.
-func (db *lsmt) checkFlush() {
-	if (db.activeMemtable.Bytes() > db.options.MemtableMaximumSize) && db.flushLock.TryLock() {
-		newTable := mt.NewMemtable()
-		unsafeActive := (*unsafe.Pointer)(unsafe.Pointer(&db.activeMemtable))
-		active := atomic.SwapPointer(unsafeActive, unsafe.Pointer(&newTable))
-		db.inactiveMemtables = append(db.inactiveMemtables, (*mt.Memtable)(active))
-		go func() {
-			defer db.flushLock.Unlock()
-			newManager, err := db.sstManager.Flush(db.inactiveMemtables)
-			if err == nil && newManager != nil {
-				db.inactiveMemtables = []*mt.Memtable{}
-				db.sstManager = newManager
-			}
-		}()
-	}
 }
 
 // Creates a bounded iterator bounded by the start and end inclusive.
@@ -154,4 +143,45 @@ func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 	iters[len(iters)-1] = sstIter
 
 	return common.NewMergedIterator(iters), nil
+}
+
+// Close the lsmt. Failure to call this function before exiting the process might result
+// data loss.
+// Once Close() is invoked all writes will fail.
+func (db *lsmt) Close() error {
+	db.closed = true
+	return db.forceFlush()
+}
+
+// Check to see if the active memtable is ready to be flushed to disk. If so,
+// asynchronously flush to disk.
+func (db *lsmt) checkFlush() {
+	if (db.activeMemtable.Bytes() > db.options.MemtableMaximumSize) && db.flushLock.TryLock() {
+		newTable := mt.NewMemtable()
+		unsafeActive := (*unsafe.Pointer)(unsafe.Pointer(&db.activeMemtable))
+		active := atomic.SwapPointer(unsafeActive, unsafe.Pointer(newTable))
+		db.inactiveMemtables = append(db.inactiveMemtables, (*mt.Memtable)(active))
+		go func() {
+			defer db.flushLock.Unlock()
+			newManager, err := db.sstManager.Flush(db.inactiveMemtables)
+			if err == nil && newManager != nil {
+				db.inactiveMemtables = []*mt.Memtable{}
+				db.sstManager = newManager
+			}
+		}()
+	}
+}
+
+// Synchronously force a flush to disk regardless of the size of the active memtable.
+func (db *lsmt) forceFlush() error {
+	for db.flushLock.IsLocked() {
+	}
+	tables := make([]*mt.Memtable, len(db.inactiveMemtables)+1)
+	tables[0] = db.activeMemtable
+	for i, inactive := range db.inactiveMemtables {
+		tables[i+1] = inactive
+	}
+	return nil
+	//_, err := db.sstManager.Flush(tables)
+	//return err
 }

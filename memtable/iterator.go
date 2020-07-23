@@ -17,7 +17,7 @@ type memtableIterator struct {
 // time snapshot of the memtable.
 func (memtable *Memtable) Iterator(start, end []byte) common.Iterator {
 	stack := []persistentNode{}
-	node := memtable.sortedMap.root
+	node := memtable.sortedMap.getRoot()
 	if node == nil {
 		return &memtableIterator{init: false, stack: stack, end: end}
 	}
@@ -35,7 +35,7 @@ func (memtable *Memtable) Iterator(start, end []byte) common.Iterator {
 // time snapshot of the memtable.
 func (memtable *Memtable) UnboundedIterator() common.Iterator {
 	stack := []persistentNode{}
-	node := memtable.sortedMap.root
+	node := memtable.sortedMap.getRoot()
 	if node == nil {
 		return &memtableIterator{init: false, stack: stack, end: nil}
 	}

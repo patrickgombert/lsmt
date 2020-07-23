@@ -22,6 +22,22 @@ func TestEmptyIterator(t *testing.T) {
 	}
 }
 
+func TestEmptyUnboundedIterator(t *testing.T) {
+	mt := NewMemtable()
+
+	iter := mt.UnboundedIterator()
+	defer iter.Close()
+
+	pair, _ := iter.Get()
+	if pair != nil {
+		t.Errorf("Expected nil : nil but got %q : %q", pair.Key, pair.Value)
+	}
+	next, _ := iter.Next()
+	if next {
+		t.Error("Expected empty unbounded iterator to not have Next(), but had Next()")
+	}
+}
+
 func TestIteratorFromStartAndDoesNotHitEndKey(t *testing.T) {
 	mt := NewMemtable()
 	mt.Write([]byte{1, 1, 1}, []byte{1, 1, 1})

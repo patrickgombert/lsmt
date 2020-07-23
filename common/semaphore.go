@@ -12,7 +12,7 @@ func NewSemaphore(size int) Semaphore {
 	return s
 }
 
-// Returns true is the semaphore is fully locked, false if there are still slots available
+// Returns true if the semaphore is fully locked, false if there are still slots available
 func (s Semaphore) IsLocked() bool {
 	return len(s) == 0
 }
