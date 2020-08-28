@@ -107,7 +107,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 	length := make([]byte, 1)
 	_, err := iter.block.Read(length)
 	// Move to the next block if possible when the end of a block is hit
-	if err == io.EOF {
+	if err == io.EOF || length[0] == 0 {
 		if iter.blockIndex == len(iter.ssts[iter.sstIndex].blocks)-1 {
 			if iter.sstIndex == len(iter.ssts)-1 {
 				iter.closed = true
@@ -119,7 +119,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 					return sst.ReadBlock(arg.(*block), iter.level)
 				})
 				if err != nil {
-					return false, nil
+					return false, err
 				}
 				iter.block = bytes.NewReader(b)
 				iter.sstIndex++
@@ -147,7 +147,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if c.Compare(k, iter.end) == c.GREATER_THAN {
+	if iter.end != nil && c.Compare(k, iter.end) == c.GREATER_THAN {
 		iter.closed = true
 		return false, nil
 	}
@@ -161,6 +161,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	iter.nextKey = k
 	iter.nextValue = v
 
 	return true, nil

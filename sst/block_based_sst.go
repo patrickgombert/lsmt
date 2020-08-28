@@ -48,7 +48,8 @@ func (sst *sst) Path() string {
 
 func (sst *sst) GetBlock(key []byte) *block {
 	for _, block := range sst.blocks {
-		if c.Compare(key, block.start) != c.LESS_THAN && c.Compare(key, block.end) != c.GREATER_THAN {
+		start := c.Compare(key, block.start)
+		if (start != c.LESS_THAN || start == c.EQUAL) && c.Compare(key, block.end) != c.GREATER_THAN {
 			return block
 		}
 	}
@@ -227,7 +228,7 @@ func Flush(options config.Options, level config.Level, iter common.Iterator) ([]
 
 	for next {
 		pair, _ := iter.Get()
-		if c.Compare(pair.Key, common.Tombstone) != c.EQUAL {
+		if c.Compare(pair.Value, common.Tombstone) != c.EQUAL {
 			recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
 
 			if bytesWritten+recordLength > level.SSTSize {
@@ -266,9 +267,9 @@ func Flush(options config.Options, level config.Level, iter common.Iterator) ([]
 
 			bytesWritten += recordLength
 			currentBlockSize += recordLength
-			next, _ = iter.Next()
 			previousPair = pair
 		}
+		next, _ = iter.Next()
 	}
 
 	if len(ssts) > 0 {
