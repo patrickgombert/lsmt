@@ -35,7 +35,7 @@ func Lsmt(options config.Options) (*lsmt, []error) {
 		return nil, []error{err}
 	}
 	if mostRecentManifest == nil {
-		mostRecentManifest = &sst.Manifest{Levels: [][]sst.Entry{}}
+		mostRecentManifest = &sst.Manifest{Levels: [][]sst.Entry{}, Version: 0}
 	}
 	sstManager, err := sst.OpenBlockBasedSSTManager(mostRecentManifest, options)
 	if err != nil {
@@ -162,12 +162,12 @@ func (db *lsmt) checkFlush() {
 		active := atomic.SwapPointer(unsafeActive, unsafe.Pointer(newTable))
 		db.inactiveMemtables = append(db.inactiveMemtables, (*mt.Memtable)(active))
 		go func() {
-			defer db.flushLock.Unlock()
 			newManager, err := db.sstManager.Flush(db.inactiveMemtables)
 			if err == nil && newManager != nil {
 				db.inactiveMemtables = []*mt.Memtable{}
 				db.sstManager = newManager
 			}
+			db.flushLock.Unlock()
 		}()
 	}
 }
@@ -181,7 +181,6 @@ func (db *lsmt) forceFlush() error {
 	for i, inactive := range db.inactiveMemtables {
 		tables[i+1] = inactive
 	}
-	return nil
-	//_, err := db.sstManager.Flush(tables)
-	//return err
+	_, err := db.sstManager.Flush(tables)
+	return err
 }
