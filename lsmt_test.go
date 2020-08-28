@@ -133,3 +133,29 @@ func TestFlushWithoutExistingLevel(t *testing.T) {
 		t.Errorf("Expected opened lsmt to contain %q, but did not", []byte{1, 1, 1, 1, 1, 1})
 	}
 }
+
+func TestFlushWithExistingLevel(t *testing.T) {
+	common.SetUp(t)
+	defer common.TearDown(t)
+
+	sink := config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000}
+	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
+	lsmt, _ := Lsmt(options)
+	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
+	lsmt.Close()
+
+	lsmt, _ = Lsmt(options)
+	lsmt.Write([]byte{1, 0, 1}, []byte{1, 0, 1})
+	lsmt.Close()
+
+	openedLsmt, _ := Lsmt(options)
+	result, _ := openedLsmt.Get([]byte{1, 1, 1, 1, 1, 1})
+	if c.Compare(result, []byte{1, 1, 1, 1, 1, 1}) != c.EQUAL {
+		t.Errorf("Expected opened lsmt to contain %q, but did not", []byte{1, 1, 1, 1, 1, 1})
+	}
+
+	result, _ = openedLsmt.Get([]byte{1, 0, 1})
+	if c.Compare(result, []byte{1, 0, 1}) != c.EQUAL {
+		t.Errorf("Expected opened lsmt to contain %q, but did not", []byte{1, 0, 1})
+	}
+}
