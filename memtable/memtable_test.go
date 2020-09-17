@@ -38,9 +38,12 @@ func TestGetDeletedValue(t *testing.T) {
 	key := []byte{1}
 	mt.Write(key, []byte{1})
 	mt.Write(key, common.Tombstone)
-	_, found := mt.Get(key)
-	if found {
-		t.Error("Expected tombstoned record to not be found, but was found")
+	val, found := mt.Get(key)
+	if !found {
+		t.Error("Expected to find tombstoned record, but did not find one")
+	}
+	if c.Compare(val, common.Tombstone) != c.EQUAL {
+		t.Errorf("Expected %q to be a tombstone", val)
 	}
 }
 

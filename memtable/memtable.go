@@ -305,11 +305,7 @@ func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
 		comparison := c.Compare(key, node.getPair().Key)
 		switch comparison {
 		case c.EQUAL:
-			if c.Compare(node.getPair().Value, common.Tombstone) == c.EQUAL {
-				return nil, false
-			} else {
-				return node.getPair().Value, true
-			}
+			return node.getPair().Value, true
 		case c.LESS_THAN:
 			node = node.getLeft()
 		case c.GREATER_THAN:
