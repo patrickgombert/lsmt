@@ -130,7 +130,7 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	}
 }
 
-func TestIterFromStartOfFile(t *testing.T) {
+func TestIteratorFromStartOfFile(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
 
@@ -153,7 +153,7 @@ func TestIterFromStartOfFile(t *testing.T) {
 	common.CompareNext(iter, false, t)
 }
 
-func TestIterStartsMidBlock(t *testing.T) {
+func TestIteratorStartsMidBlock(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
 
@@ -168,6 +168,29 @@ func TestIterStartsMidBlock(t *testing.T) {
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{2})
+	defer iter.Close()
+
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{1}, []byte{1, 1}, t)
+	common.CompareNext(iter, true, t)
+	common.CompareGet(iter, []byte{2}, []byte{2, 2}, t)
+	common.CompareNext(iter, false, t)
+}
+
+func TestUnboundedIterator(t *testing.T) {
+	common.SetUp(t)
+	defer common.TearDown(t)
+
+	mt := memtable.NewMemtable()
+	mt.Write([]byte{1}, []byte{1, 1})
+	mt.Write([]byte{2}, []byte{2, 2})
+
+	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
+	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+
+	sst, _ := OpenSst(ssts[0].file)
+	iter, _ := sst.UnboundedIterator()
 	defer iter.Close()
 
 	common.CompareNext(iter, true, t)

@@ -153,12 +153,55 @@ func (sst *sst) Iterator(start, end []byte) (*sstIterator, error) {
 	}
 }
 
+func (sst *sst) UnboundedIterator() (*sstIterator, error) {
+	f, err := os.Open(sst.file)
+	if err != nil {
+		return nil, err
+	}
+
+	f.Seek(sst.blocks[0].offset, io.SeekStart)
+	bytesRead := sst.blocks[0].offset
+	length := make([]byte, 1)
+
+	_, err = f.Read(length)
+	if err != nil {
+		return nil, err
+	}
+	key := make([]byte, length[0])
+	_, err = f.Read(key)
+	if err != nil {
+		return nil, err
+	}
+	_, err = f.Read(length)
+	if err != nil {
+		return nil, err
+	}
+	value := make([]byte, length[0])
+	_, err = f.Read(value)
+	if err != nil {
+		return nil, err
+	}
+	bytesRead += int64(len(key) + len(value) + 2)
+
+	return &sstIterator{
+		init:       false,
+		f:          f,
+		bytesRead:  bytesRead,
+		metaOffset: sst.metaOffset,
+		key:        key,
+		value:      value,
+		start:      nil,
+		end:        nil,
+		closed:     false,
+	}, nil
+}
+
 func (iter *sstIterator) Next() (bool, error) {
 	if iter.closed {
 		return false, nil
 	}
 
-	if iter.bytesRead >= iter.metaOffset {
+	if iter.bytesRead >= iter.metaOffset && iter.init {
 		return false, nil
 	}
 
@@ -178,7 +221,7 @@ func (iter *sstIterator) Next() (bool, error) {
 		return false, err
 	}
 
-	if c.Compare(key, iter.end) == c.GREATER_THAN {
+	if iter.end != nil && c.Compare(key, iter.end) == c.GREATER_THAN {
 		return false, nil
 	}
 
