@@ -314,6 +314,8 @@ func (memtable *Memtable) Get(key []byte) ([]byte, bool) {
 	}
 }
 
+// Writes a key/value pair to the memtable.
+// Returns a new instance of a memtable with the key value pair added.
 func (memtable *Memtable) Write(key, value []byte) {
 	sortedMap := memtable.sortedMap
 	if sortedMap.getRoot() == nil {
