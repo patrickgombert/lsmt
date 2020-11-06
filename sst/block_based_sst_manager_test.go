@@ -34,7 +34,7 @@ func TestGetFoundKeyInCache(t *testing.T) {
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1}}
+	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 1000}}
 	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
 	entry := Entry{Path: ssts[0].Path()}

@@ -13,8 +13,9 @@ import (
 )
 
 type blockBasedLevel struct {
-	ssts       []*sst
-	blockCache cache.Cache
+	ssts         []*sst
+	bloomFilters []*common.BloomFilter
+	blockCache   cache.Cache
 }
 
 // A manager for block based SSTs
@@ -28,16 +29,33 @@ func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*Bloc
 	levels := make([]*blockBasedLevel, len(manifest.Levels))
 	for i, entries := range manifest.Levels {
 		levelOptions := options.Levels[i]
+		bloomFilters := make([]*common.BloomFilter, len(entries))
 		cache := cache.NewShardedLRUCache(levelOptions.BlockCacheShards, levelOptions.BlockCacheSize)
 		ssts := make([]*sst, len(entries))
-		l := &blockBasedLevel{ssts: ssts, blockCache: cache}
+		l := &blockBasedLevel{ssts: ssts, bloomFilters: bloomFilters, blockCache: cache}
 
 		for idx, entry := range entries {
+			bloomFilter := common.NewBloomFilter(levelOptions.BloomFilterSize)
 			sst, err := OpenSst(entry.Path)
 			if err != nil {
 				return nil, err
 			}
 			ssts[idx] = sst
+
+			iter, err := sst.UnboundedIterator()
+			if err != nil {
+				return nil, err
+			}
+
+			next, _ := iter.Next()
+			for next {
+				pair, err := iter.Get()
+				if err == nil {
+					bloomFilter.Insert(pair.Key)
+				}
+				next, _ = iter.Next()
+			}
+			bloomFilters[idx] = bloomFilter
 		}
 
 		levels[i] = l
@@ -51,53 +69,55 @@ func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*Bloc
 // The value at the highest level will be returned. If no value is found then it will
 // return nil. Uses the write through block cache while searching for a value.
 func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
-	for i, level := range manager.levels {
-		for _, sst := range level.ssts {
-			foundBlock := sst.GetBlock(key)
-			if foundBlock != nil {
-				b, err := level.blockCache.Get(foundBlock, func(bl cache.Shardable) ([]byte, error) {
-					return sst.ReadBlock(bl.(*block), manager.options.Levels[i])
-				})
+	for _, level := range manager.levels {
+		for i, sst := range level.ssts {
+			if level.bloomFilters[i].Test(key) {
+				foundBlock := sst.GetBlock(key)
+				if foundBlock != nil {
+					b, err := level.blockCache.Get(foundBlock, func(bl cache.Shardable) ([]byte, error) {
+						return sst.ReadBlock(bl.(*block), manager.options.Levels[i])
+					})
 
-				if err != nil {
-					return nil, err
-				}
-
-				reader := bytes.NewReader(b)
-				length := make([]byte, 1)
-				for {
-					_, err = reader.Read(length)
-					if err == io.EOF {
-						return nil, nil
-					}
 					if err != nil {
 						return nil, err
 					}
-					k := make([]byte, length[0])
-					bytesRead, err := reader.Read(k)
-					if err == io.EOF || bytesRead < int(length[0]) {
-						return nil, nil
-					}
-					_, err = reader.Read(length)
 
-					if c.Compare(k, key) == c.EQUAL {
-						v := make([]byte, length[0])
-						bytesRead, err = reader.Read(v)
-						if err == io.EOF || bytesRead < int(length[0]) {
-							return nil, nil
-						}
-						if err != nil {
-							return nil, err
-						}
-
-						return v, nil
-					} else {
-						_, err = reader.Seek(int64(length[0]), io.SeekCurrent)
+					reader := bytes.NewReader(b)
+					length := make([]byte, 1)
+					for {
+						_, err = reader.Read(length)
 						if err == io.EOF {
 							return nil, nil
 						}
 						if err != nil {
 							return nil, err
+						}
+						k := make([]byte, length[0])
+						bytesRead, err := reader.Read(k)
+						if err == io.EOF || bytesRead < int(length[0]) {
+							return nil, nil
+						}
+						_, err = reader.Read(length)
+
+						if c.Compare(k, key) == c.EQUAL {
+							v := make([]byte, length[0])
+							bytesRead, err = reader.Read(v)
+							if err == io.EOF || bytesRead < int(length[0]) {
+								return nil, nil
+							}
+							if err != nil {
+								return nil, err
+							}
+
+							return v, nil
+						} else {
+							_, err = reader.Seek(int64(length[0]), io.SeekCurrent)
+							if err == io.EOF {
+								return nil, nil
+							}
+							if err != nil {
+								return nil, err
+							}
 						}
 					}
 				}

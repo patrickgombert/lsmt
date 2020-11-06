@@ -11,6 +11,7 @@ type Level struct {
 	BlockCacheShards int
 	SSTSize          int64
 	MaximumSSTFiles  int
+	BloomFilterSize  uint32
 }
 
 type Options struct {
@@ -38,6 +39,10 @@ func (options Options) Validate() []error {
 
 		if level.BlockSize > level.BlockCacheSize {
 			errs = append(errs, fmt.Errorf("BlockSize %d is larger than the level's BlockCacheSize %d", level.BlockSize, level.BlockCacheSize))
+		}
+
+		if level.BloomFilterSize < 1 {
+			errs = append(errs, fmt.Errorf("BloomFilterSize %d must be greater than 0", level.BloomFilterSize))
 		}
 	}
 
