@@ -8,14 +8,18 @@ import (
 	"github.com/patrickgombert/lsmt/config"
 )
 
-var sink config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
-var options config.Options = config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, Path: common.TEST_DIR}
+var sink config.Sink = config.Sink{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
+var level config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 1}
+var options config.Options = config.Options{Levels: []config.Level{level}, Sink: sink, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 1000, Path: common.TEST_DIR}
 
 func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
 
-	lsmt, _ := Lsmt(options)
+	lsmt, errs := Lsmt(options)
+	if errs != nil {
+		t.Errorf("err %s\n", errs)
+	}
 	err := lsmt.Write(nil, []byte{0})
 	if err == nil {
 		t.Error("Expected lsmt to error when writing nil key, but did not")
@@ -118,8 +122,6 @@ func TestFlushWithoutExistingLevel(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
 
-	sink := config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
-	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
 	lsmt, _ := Lsmt(options)
 	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
 	lsmt.Close()
@@ -138,8 +140,6 @@ func TestFlushWithExistingLevel(t *testing.T) {
 	common.SetUp(t)
 	defer common.TearDown(t)
 
-	sink := config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
-	options := config.Options{Levels: []config.Level{sink}, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 10, Path: common.TEST_DIR}
 	lsmt, _ := Lsmt(options)
 	lsmt.Write([]byte{1, 1, 1, 1, 1, 1}, []byte{1, 1, 1, 1, 1, 1})
 	lsmt.Close()
