@@ -142,7 +142,7 @@ func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 	}
 	iters[len(iters)-1] = sstIter
 
-	return common.NewMergedIterator(iters), nil
+	return common.NewMergedIterator(iters, false), nil
 }
 
 // Close the lsmt. Failure to call this function before exiting the process might result

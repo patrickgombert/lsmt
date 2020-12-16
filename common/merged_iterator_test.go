@@ -6,7 +6,7 @@ import (
 )
 
 func TestMergedIteratorsWithNoIterators(t *testing.T) {
-	merged := NewMergedIterator([]Iterator{})
+	merged := NewMergedIterator([]Iterator{}, true)
 	defer merged.Close()
 
 	CompareNext(merged, false, t)
@@ -15,7 +15,7 @@ func TestMergedIteratorsWithNoIterators(t *testing.T) {
 func TestMergedIterators(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{1}, Value: []byte{1}}, &Pair{Key: []byte{2}, Value: []byte{2}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}, &Pair{Key: []byte{3}, Value: []byte{3}}}
-	merged := makeMergedIterator(pairs1, pairs2)
+	merged := makeMergedIterator(true, pairs1, pairs2)
 	defer merged.Close()
 
 	CompareNext(merged, true, t)
@@ -32,7 +32,7 @@ func TestMergedIterators(t *testing.T) {
 func TestMergedIteratorsWithEqualKeys(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{1}}}
-	merged := makeMergedIterator(pairs1, pairs2)
+	merged := makeMergedIterator(true, pairs1, pairs2)
 	defer merged.Close()
 
 	CompareNext(merged, true, t)
@@ -43,7 +43,7 @@ func TestMergedIteratorsWithEqualKeys(t *testing.T) {
 func TestMergedIteratorsWithUnevenSize(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{1}, Value: []byte{1}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}, &Pair{Key: []byte{2}, Value: []byte{2}}}
-	merged := makeMergedIterator(pairs1, pairs2)
+	merged := makeMergedIterator(true, pairs1, pairs2)
 	defer merged.Close()
 
 	CompareNext(merged, true, t)
@@ -58,7 +58,7 @@ func TestMergedIteratorsWithUnevenSize(t *testing.T) {
 func TestMergedIteratorCloses(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{1}}}
-	merged := makeMergedIterator(pairs1, pairs2)
+	merged := makeMergedIterator(true, pairs1, pairs2)
 
 	CompareNext(merged, true, t)
 	CompareGet(merged, []byte{0}, []byte{0}, t)
@@ -66,6 +66,24 @@ func TestMergedIteratorCloses(t *testing.T) {
 	merged.Close()
 
 	CompareNext(merged, false, t)
+}
+
+func TestMergedIteratorRespectsReturnTombstone(t *testing.T) {
+	pairs1 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
+	pairs2 := []*Pair{&Pair{Key: []byte{1}, Value: Tombstone}}
+	merged := makeMergedIterator(true, pairs1, pairs2)
+
+	CompareNext(merged, true, t)
+	CompareGet(merged, []byte{0}, []byte{0}, t)
+	CompareNext(merged, true, t)
+	CompareGet(merged, []byte{1}, Tombstone, t)
+	merged.Close()
+
+	merged = makeMergedIterator(false, pairs1, pairs2)
+	CompareNext(merged, true, t)
+	CompareGet(merged, []byte{0}, []byte{0}, t)
+	CompareNext(merged, false, t)
+	merged.Close()
 }
 
 type listIterator struct {
@@ -94,7 +112,7 @@ func (li *listIterator) Close() error {
 	return nil
 }
 
-func makeMergedIterator(pairs ...[]*Pair) *mergedIterator {
+func makeMergedIterator(returnTombstone bool, pairs ...[]*Pair) *mergedIterator {
 	iterators := make([]Iterator, len(pairs))
 	for i, p := range pairs {
 		l := list.New()
@@ -103,5 +121,5 @@ func makeMergedIterator(pairs ...[]*Pair) *mergedIterator {
 		}
 		iterators[i] = &listIterator{l: l}
 	}
-	return NewMergedIterator(iterators)
+	return NewMergedIterator(iterators, returnTombstone)
 }
