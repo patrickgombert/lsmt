@@ -8,9 +8,10 @@ const (
 )
 
 type mergedIterator struct {
-	iterators []Iterator
-	peek      []*Pair
-	next      int
+	iterators       []Iterator
+	peek            []*Pair
+	next            int
+	returnTombstone bool
 }
 
 // Creates a new merged iterator from the given slice of iterators.
@@ -18,9 +19,12 @@ type mergedIterator struct {
 // iterators contain the same key then accept the pair from the iterator at the smaller
 // index. Each key will only be returned once from a merged iterator and it is assumed
 // that each key only appears once in each provided iterator.
-func NewMergedIterator(iterators []Iterator) *mergedIterator {
+//
+// Accepts a returnTombstone parameter which indicates whether to return pairs with a
+// tombstone value.
+func NewMergedIterator(iterators []Iterator, returnTombstone bool) *mergedIterator {
 	peek := make([]*Pair, len(iterators))
-	return &mergedIterator{iterators: iterators, peek: peek, next: INIT}
+	return &mergedIterator{iterators: iterators, peek: peek, next: INIT, returnTombstone: returnTombstone}
 }
 
 // Peeks in all iterators and returns true if there exists at least one more pair
@@ -98,6 +102,21 @@ func (iter *mergedIterator) progress(index int) error {
 	}
 	if next {
 		pair, err := iter.iterators[index].Get()
+		if !iter.returnTombstone {
+			for c.Compare(pair.Value, Tombstone) == c.EQUAL {
+				next, err := iter.iterators[index].Next()
+				if err != nil {
+					return err
+				}
+
+				if next {
+					pair, err = iter.iterators[index].Get()
+				} else {
+					iter.peek[index] = nil
+					return nil
+				}
+			}
+		}
 		if err != nil {
 			return err
 		}

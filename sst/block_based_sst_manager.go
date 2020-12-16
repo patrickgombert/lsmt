@@ -141,7 +141,7 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 		iterators[i] = iter
 	}
 
-	mergedIterator := common.NewMergedIterator(iterators)
+	mergedIterator := common.NewMergedIterator(iterators, false)
 	return mergedIterator, nil
 }
 
@@ -162,7 +162,7 @@ func (manager *BlockBasedSSTManager) Flush(tables []*memtable.Memtable) (SSTMana
 
 		tables = tables[i:]
 
-		iter := common.NewMergedIterator(mtIters)
+		iter := common.NewMergedIterator(mtIters, true)
 		newManager, err = newManager.flushIter(iter, currentBytes)
 		if err != nil {
 			return nil, err
@@ -199,7 +199,7 @@ func (manager *BlockBasedSSTManager) flushIter(iter common.Iterator, currentByte
 				if err != nil {
 					return nil, err
 				}
-				mergedIter := common.NewMergedIterator([]common.Iterator{iter, levelIter})
+				mergedIter := common.NewMergedIterator([]common.Iterator{iter, levelIter}, true)
 
 				ssts, err := Flush(manager.options, levelOptions, mergedIter)
 				if err != nil {
