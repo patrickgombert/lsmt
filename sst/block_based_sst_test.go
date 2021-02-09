@@ -10,9 +10,9 @@ import (
 )
 
 func TestFlushNilMemtable(t *testing.T) {
-	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := config.Options{Levels: levels, Path: "/tmp/lsmt/", MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	_, err := Flush(options, levels[0], nil)
+	sink := &config.Sink{BlockSize: 4096, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 524288000, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: "/tmp/lsmt/", MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	_, err := Flush(options, sink, nil)
 	if err == nil {
 		t.Error("Expected flushing nil memtable to produce an error but did not")
 	}
@@ -25,9 +25,9 @@ func TestFlush(t *testing.T) {
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	_, err := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4096, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 524288000, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	_, err := Flush(options, sink, mt.UnboundedIterator())
 	if err != nil {
 		t.Errorf("Failed to flush memtable with error %q", err)
 	}
@@ -48,9 +48,9 @@ func TestFlushAndOpen(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{1}, []byte{1})
 
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 8, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	if sst.file != ssts[0].file {
@@ -87,9 +87,9 @@ func TestFlushAndOpenMultiSSTFlush(t *testing.T) {
 	mt.Write([]byte{6}, []byte{6})
 	mt.Write([]byte{7}, []byte{7})
 
-	levels := []config.Level{config.Level{BlockSize: 8, SSTSize: 16}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 8, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 16, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 
 	if len(ssts) != 2 {
 		t.Errorf("Expected to flush %d tables, but flushed %d", 2, len(ssts))
@@ -138,9 +138,9 @@ func TestIteratorFromStartOfFile(t *testing.T) {
 	mt.Write([]byte{1}, []byte{1, 1})
 	mt.Write([]byte{2}, []byte{2, 2})
 
-	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 8, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 16, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{3})
@@ -162,9 +162,9 @@ func TestIteratorStartsMidBlock(t *testing.T) {
 	mt.Write([]byte{2}, []byte{2, 2})
 	mt.Write([]byte{3}, []byte{3, 3})
 
-	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4096, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 524288000, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.Iterator([]byte{0}, []byte{2})
@@ -185,9 +185,9 @@ func TestUnboundedIterator(t *testing.T) {
 	mt.Write([]byte{1}, []byte{1, 1})
 	mt.Write([]byte{2}, []byte{2, 2})
 
-	levels := []config.Level{config.Level{BlockSize: 4096, SSTSize: 524288000}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4096, BlockCacheSize: 8192, BlockCacheShards: 1, SSTSize: 524288000, BloomFilterSize: 1024}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 
 	sst, _ := OpenSst(ssts[0].file)
 	iter, _ := sst.UnboundedIterator()

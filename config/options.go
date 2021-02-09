@@ -4,6 +4,15 @@ import (
 	"fmt"
 )
 
+// Common options for Levels and the Sink
+type LevelOptions interface {
+	GetBlockSize() int64
+	GetBlockCacheSize() int64
+	GetBlockCacheShards() int
+	GetSSTSize() int64
+	GetBloomFilterSize() uint32
+}
+
 // Configuration for a particular level in the LSMT.
 type Level struct {
 	BlockSize        int64
@@ -20,7 +29,7 @@ type Level struct {
 type Sink struct {
 	BlockSize        int64
 	BlockCacheSize   int64
-	BlockCacheShards int64
+	BlockCacheShards int
 	SSTSize          int64
 	BloomFilterSize  uint32
 }
@@ -28,17 +37,28 @@ type Sink struct {
 // Options for an LSMT.
 // All size options are specified in bytes.
 type Options struct {
-	Levels              []Level
-	Sink                Sink
+	Levels              []*Level
+	Sink                *Sink
 	Path                string
 	MemtableMaximumSize int64
 	KeyMaximumSize      int
 	ValueMaximumSize    int
 }
 
+// Returns the level options for a given integer level.
+func (options *Options) GetLevel(i int) (LevelOptions, error) {
+	if i < len(options.Levels) {
+		return options.Levels[i], nil
+	} else if i == len(options.Levels) {
+		return options.Sink, nil
+	} else {
+		return nil, fmt.Errorf("Level index %d is out of bounds", i)
+	}
+}
+
 // Validates that all of the fields contained with the Options are valid. Returns a list
 // of errors. If there are no errors then the list will be empty.
-func (options Options) Validate() []error {
+func (options *Options) Validate() []error {
 	errs := []error{}
 
 	if options.MemtableMaximumSize < 1 {
@@ -62,7 +82,7 @@ func (options Options) Validate() []error {
 	return errs
 }
 
-func (level Level) validate(options Options) []error {
+func (level *Level) validate(options *Options) []error {
 	errs := []error{}
 
 	if int(level.BlockSize) < options.KeyMaximumSize {
@@ -87,7 +107,7 @@ func (level Level) validate(options Options) []error {
 	return errs
 }
 
-func (sink Sink) validate(options Options) []error {
+func (sink *Sink) validate(options *Options) []error {
 	errs := []error{}
 
 	if int(sink.BlockSize) < options.KeyMaximumSize {
@@ -106,4 +126,44 @@ func (sink Sink) validate(options Options) []error {
 	}
 
 	return errs
+}
+
+func (level *Level) GetBlockSize() int64 {
+	return level.BlockSize
+}
+
+func (level *Level) GetBlockCacheSize() int64 {
+	return level.BlockCacheSize
+}
+
+func (level *Level) GetBlockCacheShards() int {
+	return level.BlockCacheShards
+}
+
+func (level *Level) GetSSTSize() int64 {
+	return level.SSTSize
+}
+
+func (level *Level) GetBloomFilterSize() uint32 {
+	return level.BloomFilterSize
+}
+
+func (sink *Sink) GetBlockSize() int64 {
+	return sink.BlockSize
+}
+
+func (sink *Sink) GetBlockCacheSize() int64 {
+	return sink.BlockCacheSize
+}
+
+func (sink *Sink) GetBlockCacheShards() int {
+	return sink.BlockCacheShards
+}
+
+func (sink *Sink) GetSSTSize() int64 {
+	return sink.SSTSize
+}
+
+func (sink *Sink) GetBloomFilterSize() uint32 {
+	return sink.BloomFilterSize
 }

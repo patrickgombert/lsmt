@@ -13,7 +13,7 @@ import (
 )
 
 type lsmt struct {
-	options           config.Options
+	options           *config.Options
 	activeMemtable    *mt.Memtable
 	inactiveMemtables []*mt.Memtable
 	sstManager        sst.SSTManager
@@ -24,7 +24,7 @@ type lsmt struct {
 // Creates a new log-structured merge-tree in accordance with the options provided.
 // If an existing lsmt exists at options.path then it will be opened, otherwise a new
 // lsmt will be created.
-func Lsmt(options config.Options) (*lsmt, []error) {
+func Lsmt(options *config.Options) (*lsmt, []error) {
 	errs := options.Validate()
 	if len(errs) != 0 {
 		return nil, errs

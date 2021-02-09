@@ -57,7 +57,7 @@ func (sst *sst) GetBlock(key []byte) *block {
 	return nil
 }
 
-func (sst *sst) ReadBlock(b *block, level config.Level) ([]byte, error) {
+func (sst *sst) ReadBlock(b *block, level config.LevelOptions) ([]byte, error) {
 	f, err := os.Open(sst.file)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (sst *sst) ReadBlock(b *block, level config.Level) ([]byte, error) {
 		return nil, err
 	}
 
-	bytes := make([]byte, level.BlockSize)
+	bytes := make([]byte, level.GetBlockSize())
 	bytesRead, err := f.Read(bytes)
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (iter *sstIterator) Close() error {
 	return err
 }
 
-func Flush(options config.Options, level config.Level, iter common.Iterator) ([]*sst, error) {
+func Flush(options *config.Options, level config.LevelOptions, iter common.Iterator) ([]*sst, error) {
 	if iter == nil {
 		return nil, errors.New("unable to flush nil iterator")
 	}
@@ -274,7 +274,7 @@ func Flush(options config.Options, level config.Level, iter common.Iterator) ([]
 		if c.Compare(pair.Value, common.Tombstone) != c.EQUAL {
 			recordLength := int64(len(pair.Key) + len(pair.Value) + 2)
 
-			if bytesWritten+recordLength > level.SSTSize {
+			if bytesWritten+recordLength > level.GetSSTSize() {
 				ssts[len(ssts)-1].metaOffset = bytesWritten
 				currentBlock.end = previousPair.Key
 				writeMeta(w, bytesWritten, blocks)
@@ -295,7 +295,7 @@ func Flush(options config.Options, level config.Level, iter common.Iterator) ([]
 				currentBlockSize = 0
 			}
 
-			if currentBlockSize+recordLength > level.BlockSize {
+			if currentBlockSize+recordLength > level.GetBlockSize() {
 				currentBlock.end = previousPair.Key
 				currentBlock = &block{start: pair.Key, offset: bytesWritten}
 				currentBlockSize = 0
