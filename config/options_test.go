@@ -10,9 +10,9 @@ func TestValid(t *testing.T) {
 		t.Error("Expected valid Options to not produce error(s), but did")
 	}
 
-	level1 := Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 5000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
-	level2 := Level{BlockSize: 2000, SSTSize: 2000, BlockCacheSize: 8000, BloomFilterSize: 500, MaximumSSTFiles: 500}
-	options.Levels = []Level{level1, level2}
+	level1 := &Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 5000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
+	level2 := &Level{BlockSize: 2000, SSTSize: 2000, BlockCacheSize: 8000, BloomFilterSize: 500, MaximumSSTFiles: 500}
+	options.Levels = []*Level{level1, level2}
 	err = options.Validate()
 	if len(err) > 0 {
 		t.Error("Expected valid Options to not produce error(s), but did")
@@ -43,10 +43,10 @@ func TestInvalidTopLevelOptions(t *testing.T) {
 }
 
 func TestBlockSizeMustBeLessThanMaximumKeySize(t *testing.T) {
-	level := Level{BlockSize: 2, SSTSize: 1000, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
+	level := &Level{BlockSize: 2, SSTSize: 1000, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
 	options := validOptions()
 	options.ValueMaximumSize = 2
-	options.Levels = []Level{level}
+	options.Levels = []*Level{level}
 
 	err := options.Validate()
 	if len(err) != 1 {
@@ -64,10 +64,10 @@ func TestBlockSizeMustBeLessThanMaximumKeySize(t *testing.T) {
 }
 
 func TestBlockSizeMustBeLessThanMaximumValueSize(t *testing.T) {
-	level := Level{BlockSize: 2, SSTSize: 1000, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
+	level := &Level{BlockSize: 2, SSTSize: 1000, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 100}
 	options := validOptions()
 	options.KeyMaximumSize = 2
-	options.Levels = []Level{level}
+	options.Levels = []*Level{level}
 
 	err := options.Validate()
 	if len(err) != 1 {
@@ -85,9 +85,9 @@ func TestBlockSizeMustBeLessThanMaximumValueSize(t *testing.T) {
 }
 
 func TestBlockCacheSizeMustBeLargerThanBlockSize(t *testing.T) {
-	level := Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 1, BloomFilterSize: 1000, MaximumSSTFiles: 100}
+	level := &Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 1, BloomFilterSize: 1000, MaximumSSTFiles: 100}
 	options := validOptions()
-	options.Levels = []Level{level}
+	options.Levels = []*Level{level}
 
 	err := options.Validate()
 	if len(err) != 1 {
@@ -105,9 +105,9 @@ func TestBlockCacheSizeMustBeLargerThanBlockSize(t *testing.T) {
 }
 
 func TestBloomFilterSizeMustBeGreaterThan0(t *testing.T) {
-	level := Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 2000, BloomFilterSize: 0, MaximumSSTFiles: 100}
+	level := &Level{BlockSize: 1000, SSTSize: 1000, BlockCacheSize: 2000, BloomFilterSize: 0, MaximumSSTFiles: 100}
 	options := validOptions()
-	options.Levels = []Level{level}
+	options.Levels = []*Level{level}
 
 	err := options.Validate()
 	if len(err) != 1 {
@@ -123,7 +123,7 @@ func TestBloomFilterSizeMustBeGreaterThan0(t *testing.T) {
 	}
 }
 
-func validOptions() Options {
-	sink := Sink{BlockSize: 100, SSTSize: 1000, BlockCacheSize: 200, BloomFilterSize: 1000}
-	return Options{Levels: []Level{}, Sink: sink, KeyMaximumSize: 50, ValueMaximumSize: 50, MemtableMaximumSize: 1000}
+func validOptions() *Options {
+	sink := &Sink{BlockSize: 100, SSTSize: 1000, BlockCacheSize: 200, BloomFilterSize: 1000}
+	return &Options{Levels: []*Level{}, Sink: sink, KeyMaximumSize: 50, ValueMaximumSize: 50, MemtableMaximumSize: 1000}
 }

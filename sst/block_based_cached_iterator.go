@@ -13,7 +13,7 @@ import (
 // An iterator for a block based SST level.
 type cachedIterator struct {
 	end        []byte
-	level      config.Level
+	level      config.LevelOptions
 	blockCache cache.Cache
 	ssts       []*sst
 	sstIndex   int
@@ -27,7 +27,7 @@ type cachedIterator struct {
 // Returns a new iterator which uses the block cache when fetching blocks.
 // Since the block cache and config are scoped to a level, the iterator also only
 // iterates over a single level.
-func NewCachedIterator(start, end []byte, blockCache cache.Cache, ssts []*sst, level config.Level) (common.Iterator, error) {
+func NewCachedIterator(start, end []byte, blockCache cache.Cache, ssts []*sst, level config.LevelOptions) (common.Iterator, error) {
 	for sstIndex, sst := range ssts {
 		for blockIndex, bl := range sst.blocks {
 			if c.Compare(start, bl.start) != c.LESS_THAN && c.Compare(start, bl.end) != c.GREATER_THAN {
@@ -75,7 +75,7 @@ func NewCachedIterator(start, end []byte, blockCache cache.Cache, ssts []*sst, l
 // Returns a new unbounded iterator which uses the block cache when fetching blocks.
 // Since the block cache and config are scoped to a level, the iterator also only
 // iterates over a single level.
-func NewCachedUnboundedIterator(blockCache cache.Cache, ssts []*sst, level config.Level) (common.Iterator, error) {
+func NewCachedUnboundedIterator(blockCache cache.Cache, ssts []*sst, level config.LevelOptions) (common.Iterator, error) {
 	if len(ssts) == 0 {
 		return &cachedIterator{closed: true}, nil
 	}
