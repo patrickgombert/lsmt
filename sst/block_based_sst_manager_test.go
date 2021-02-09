@@ -15,9 +15,9 @@ func TestGetFoundKeyNotInCache(t *testing.T) {
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 12}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 	entry := Entry{Path: ssts[0].Path()}
 	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
 	manager, _ := OpenBlockBasedSSTManager(manifest, options)
@@ -34,9 +34,9 @@ func TestGetFoundKeyInCache(t *testing.T) {
 
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
-	levels := []config.Level{config.Level{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 1000}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 1000}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 	entry := Entry{Path: ssts[0].Path()}
 	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
 	manager, _ := OpenBlockBasedSSTManager(manifest, options)
@@ -56,9 +56,9 @@ func TestGetNotFound(t *testing.T) {
 	mt := memtable.NewMemtable()
 	mt.Write([]byte{0}, []byte{0})
 	mt.Write([]byte{2}, []byte{2})
-	levels := []config.Level{config.Level{BlockSize: 8, SSTSize: 8, BlockCacheSize: 8, BlockCacheShards: 1}}
-	options := config.Options{Levels: levels, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, levels[0], mt.UnboundedIterator())
+	sink := &config.Sink{BlockSize: 8, SSTSize: 8, BlockCacheSize: 8, BlockCacheShards: 1}
+	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
+	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
 	entry := Entry{Path: ssts[0].Path()}
 	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
 	manager, _ := OpenBlockBasedSSTManager(manifest, options)

@@ -8,9 +8,9 @@ import (
 	"github.com/patrickgombert/lsmt/config"
 )
 
-var sink config.Sink = config.Sink{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
-var level config.Level = config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 1}
-var options config.Options = config.Options{Levels: []config.Level{level}, Sink: sink, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 1000, Path: common.TEST_DIR}
+var sink *config.Sink = &config.Sink{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000}
+var level *config.Level = &config.Level{BlockSize: 100, SSTSize: 1000, BlockCacheShards: 1, BlockCacheSize: 1000, BloomFilterSize: 1000, MaximumSSTFiles: 1}
+var options *config.Options = &config.Options{Levels: []*config.Level{level}, Sink: sink, KeyMaximumSize: 10, ValueMaximumSize: 10, MemtableMaximumSize: 1000, Path: common.TEST_DIR}
 
 func TestWriteNilOrEmptyKeyReturnsError(t *testing.T) {
 	common.SetUp(t)

@@ -21,21 +21,30 @@ type blockBasedLevel struct {
 // A manager for block based SSTs
 type BlockBasedSSTManager struct {
 	levels   []*blockBasedLevel
-	options  config.Options
+	options  *config.Options
 	manifest *Manifest
 }
 
-func OpenBlockBasedSSTManager(manifest *Manifest, options config.Options) (*BlockBasedSSTManager, error) {
+func OpenBlockBasedSSTManager(manifest *Manifest, options *config.Options) (*BlockBasedSSTManager, error) {
 	levels := make([]*blockBasedLevel, len(manifest.Levels))
+	levelOptions := make([]config.LevelOptions, len(manifest.Levels))
+	for i, _ := range manifest.Levels {
+		lvl, err := options.GetLevel(i)
+		if err != nil {
+			return nil, err
+		}
+		levelOptions[i] = lvl
+	}
+
 	for i, entries := range manifest.Levels {
-		levelOptions := options.Levels[i]
+		level := levelOptions[i]
 		bloomFilters := make([]*common.BloomFilter, len(entries))
-		cache := cache.NewShardedLRUCache(levelOptions.BlockCacheShards, levelOptions.BlockCacheSize)
+		cache := cache.NewShardedLRUCache(level.GetBlockCacheShards(), level.GetBlockCacheSize())
 		ssts := make([]*sst, len(entries))
 		l := &blockBasedLevel{ssts: ssts, bloomFilters: bloomFilters, blockCache: cache}
 
 		for idx, entry := range entries {
-			bloomFilter := common.NewBloomFilter(levelOptions.BloomFilterSize)
+			bloomFilter := common.NewBloomFilter(level.GetBloomFilterSize())
 			sst, err := OpenSst(entry.Path)
 			if err != nil {
 				return nil, err
@@ -75,7 +84,11 @@ func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
 				foundBlock := sst.GetBlock(key)
 				if foundBlock != nil {
 					b, err := level.blockCache.Get(foundBlock, func(bl cache.Shardable) ([]byte, error) {
-						return sst.ReadBlock(bl.(*block), manager.options.Levels[i])
+						var levelOptions, err = manager.options.GetLevel(i)
+						if err != nil {
+							return nil, err
+						}
+						return sst.ReadBlock(bl.(*block), levelOptions)
 					})
 
 					if err != nil {
@@ -244,16 +257,16 @@ func (manager *BlockBasedSSTManager) flushIter(iter common.Iterator, currentByte
 	}
 }
 
-func (level *blockBasedLevel) bytes(options config.Level) int64 {
+func (level *blockBasedLevel) bytes(options config.LevelOptions) int64 {
 	bytes := int64(0)
 	for _, sst := range level.ssts {
-		bytes += int64(len(sst.blocks)) * options.BlockSize
+		bytes += int64(len(sst.blocks)) * options.GetBlockSize()
 	}
 	return bytes
 }
 
-func newLevel(ssts []*sst, options config.Level) *blockBasedLevel {
-	cache := cache.NewShardedLRUCache(options.BlockCacheShards, options.BlockCacheSize)
+func newLevel(ssts []*sst, options config.LevelOptions) *blockBasedLevel {
+	cache := cache.NewShardedLRUCache(options.GetBlockCacheShards(), options.GetBlockCacheSize())
 	return &blockBasedLevel{ssts: ssts, blockCache: cache}
 }
 

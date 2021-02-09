@@ -5,9 +5,12 @@ import (
 	"testing"
 
 	"github.com/patrickgombert/lsmt/comparator"
+	"github.com/patrickgombert/lsmt/config"
 )
 
 const TEST_DIR string = "/tmp/lsmt/"
+
+var EMPTY_LEVELS []*config.Level = []*config.Level{}
 
 func CompareGet(iter Iterator, key, value []byte, t *testing.T) {
 	pair, _ := iter.Get()
