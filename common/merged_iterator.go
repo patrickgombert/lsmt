@@ -1,6 +1,10 @@
 package common
 
-import c "github.com/patrickgombert/lsmt/comparator"
+import (
+	"errors"
+
+	c "github.com/patrickgombert/lsmt/comparator"
+)
 
 const (
 	INIT   int = -1
@@ -73,10 +77,13 @@ func (iter *mergedIterator) Next() (bool, error) {
 
 // Gets the pair with the least key.
 func (iter *mergedIterator) Get() (*Pair, error) {
-	if iter.next == CLOSED {
+	if iter.next == INIT {
+		return nil, errors.New("Get invoked before Next")
+	} else if iter.next == CLOSED {
 		return nil, nil
+	} else {
+		return iter.peek[iter.next], nil
 	}
-	return iter.peek[iter.next], nil
 }
 
 // Closes all underlying iterators and returns the latest error from the underlying

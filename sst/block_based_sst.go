@@ -251,6 +251,35 @@ func (iter *sstIterator) Close() error {
 	return err
 }
 
+func (sst *sst) populateBloomFilter(size uint32) (*common.BloomFilter, error) {
+	bloomFilter := common.NewBloomFilter(size)
+	iter, err := sst.UnboundedIterator()
+	if err != nil {
+		return nil, err
+	}
+
+	next, err := iter.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	for next {
+		pair, err := iter.Get()
+		if err != nil {
+			return nil, err
+		}
+
+		bloomFilter.Insert(pair.Key)
+
+		next, err = iter.Next()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return bloomFilter, nil
+}
+
 func Flush(options *config.Options, level config.LevelOptions, iter common.Iterator) ([]*sst, error) {
 	if iter == nil {
 		return nil, errors.New("unable to flush nil iterator")
@@ -374,19 +403,6 @@ func newFile(path string) (*os.File, error) {
 
 	fileName := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 	return os.Create(fmt.Sprintf("%s%s.sst", path, fileName))
-}
-
-func writeMeta(w *bufio.Writer, metaStart int64, blocks []*block) {
-	w.Write(int64toBytes(int64(len(blocks))))
-	for _, block := range blocks {
-		w.WriteByte(byte(len(block.start)))
-		w.Write(block.start)
-		w.WriteByte(byte(len(block.end)))
-		w.Write(block.end)
-		w.Write(int64toBytes(block.offset))
-	}
-	w.Write(int64toBytes(metaStart))
-	w.Flush()
 }
 
 func int64toBytes(i int64) []byte {

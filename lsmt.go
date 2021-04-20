@@ -150,7 +150,15 @@ func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 // Once Close() is invoked all writes will fail.
 func (db *lsmt) Close() error {
 	db.closed = true
-	return db.forceFlush()
+	for db.flushLock.IsLocked() {
+	}
+	tables := make([]*mt.Memtable, len(db.inactiveMemtables)+1)
+	tables[0] = db.activeMemtable
+	for i, inactive := range db.inactiveMemtables {
+		tables[i+1] = inactive
+	}
+	_, err := db.sstManager.Flush(tables)
+	return err
 }
 
 // Check to see if the active memtable is ready to be flushed to disk. If so,
@@ -170,17 +178,4 @@ func (db *lsmt) checkFlush() {
 			db.flushLock.Unlock()
 		}()
 	}
-}
-
-// Synchronously force a flush to disk regardless of the size of the active memtable.
-func (db *lsmt) forceFlush() error {
-	for db.flushLock.IsLocked() {
-	}
-	tables := make([]*mt.Memtable, len(db.inactiveMemtables)+1)
-	tables[0] = db.activeMemtable
-	for i, inactive := range db.inactiveMemtables {
-		tables[i+1] = inactive
-	}
-	_, err := db.sstManager.Flush(tables)
-	return err
 }
