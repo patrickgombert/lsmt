@@ -29,7 +29,7 @@ func TestFlush(t *testing.T) {
 	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
 	_, err := Flush(options, sink, mt.UnboundedIterator())
 	if err != nil {
-		t.Errorf("Failed to flush memtable with error %q", err)
+		t.Errorf("Failed to flush memtable with error %v", err)
 	}
 }
 

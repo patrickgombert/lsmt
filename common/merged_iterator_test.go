@@ -29,6 +29,21 @@ func TestMergedIterators(t *testing.T) {
 	CompareNext(merged, false, t)
 }
 
+func TestMergedIteratorsMissingIterators(t *testing.T) {
+	merged := NewMergedIterator([]Iterator{}, true)
+	defer merged.Close()
+	CompareNext(merged, false, t)
+}
+
+func TestMergedIteratorsAllIteratorsNoNext(t *testing.T) {
+	pairs1 := []*Pair{}
+	pairs2 := []*Pair{}
+	merged := makeMergedIterator(true, pairs1, pairs2)
+	defer merged.Close()
+
+	CompareNext(merged, false, t)
+}
+
 func TestMergedIteratorsWithEqualKeys(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{1}}}
