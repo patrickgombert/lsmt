@@ -29,6 +29,21 @@ func TestMergedIterators(t *testing.T) {
 	CompareNext(merged, false, t)
 }
 
+func TestMergedIteratorsMissingIterators(t *testing.T) {
+	merged := NewMergedIterator([]Iterator{}, true)
+	defer merged.Close()
+	CompareNext(merged, false, t)
+}
+
+func TestMergedIteratorsAllIteratorsNoNext(t *testing.T) {
+	pairs1 := []*Pair{}
+	pairs2 := []*Pair{}
+	merged := makeMergedIterator(true, pairs1, pairs2)
+	defer merged.Close()
+
+	CompareNext(merged, false, t)
+}
+
 func TestMergedIteratorsWithEqualKeys(t *testing.T) {
 	pairs1 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
 	pairs2 := []*Pair{&Pair{Key: []byte{0}, Value: []byte{1}}}
@@ -53,6 +68,16 @@ func TestMergedIteratorsWithUnevenSize(t *testing.T) {
 	CompareNext(merged, true, t)
 	CompareGet(merged, []byte{2}, []byte{2}, t)
 	CompareNext(merged, false, t)
+}
+
+func TestGetInvokedBeforeNext(t *testing.T) {
+	pairs := []*Pair{&Pair{Key: []byte{0}, Value: []byte{0}}}
+	merged := makeMergedIterator(false, pairs)
+
+	_, err := merged.Get()
+	if err != ERR_ITER_GET_INVOKED_ON_INIT {
+		t.Errorf("Expected Get() before Next() to return ERR_ITER_GET_INVOKED_ON_INIT but got %v", err)
+	}
 }
 
 func TestMergedIteratorCloses(t *testing.T) {

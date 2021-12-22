@@ -5,6 +5,8 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/patrickgombert/lsmt/cache"
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
@@ -44,26 +46,21 @@ func OpenBlockBasedSSTManager(manifest *Manifest, options *config.Options) (*Blo
 		l := &blockBasedLevel{ssts: ssts, bloomFilters: bloomFilters, blockCache: cache}
 
 		for idx, entry := range entries {
-			bloomFilter := common.NewBloomFilter(level.GetBloomFilterSize())
+			log.Debug().
+				Str("path", entry.Path).
+				Msg("opening SST file")
+
 			sst, err := OpenSst(entry.Path)
 			if err != nil {
 				return nil, err
 			}
 			ssts[idx] = sst
 
-			iter, err := sst.UnboundedIterator()
+			bloomFilter, err := sst.populateBloomFilter(level.GetBloomFilterSize())
 			if err != nil {
 				return nil, err
 			}
 
-			next, _ := iter.Next()
-			for next {
-				pair, err := iter.Get()
-				if err == nil {
-					bloomFilter.Insert(pair.Key)
-				}
-				next, _ = iter.Next()
-			}
 			bloomFilters[idx] = bloomFilter
 		}
 
@@ -146,7 +143,10 @@ func (manager *BlockBasedSSTManager) Get(key []byte) ([]byte, error) {
 func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterator, error) {
 	iterators := make([]common.Iterator, len(manager.levels))
 	for i, level := range manager.levels {
-		levelConfig := manager.options.Levels[i]
+		levelConfig, err := manager.options.GetLevel(i)
+		if err != nil {
+			return nil, err
+		}
 		iter, err := NewCachedIterator(start, end, level.blockCache, level.ssts, levelConfig)
 		if err != nil {
 			return nil, err
@@ -158,118 +158,209 @@ func (manager *BlockBasedSSTManager) Iterator(start, end []byte) (common.Iterato
 	return mergedIterator, nil
 }
 
-// Flush a memable to disk. Calling Flush will also trigger compaction.
+// Flush a slice of memables to disk. Calling Flush will also trigger compaction.
 func (manager *BlockBasedSSTManager) Flush(tables []*memtable.Memtable) (SSTManager, error) {
-	newManager := manager
-	var err error
-	for len(tables) > 0 {
-		mtIters := []common.Iterator{}
-		currentBytes := int64(0)
-		levelBytes := manager.options.Levels[0].SSTSize * int64(manager.options.Levels[0].MaximumSSTFiles)
-		i := 0
-		for currentBytes <= levelBytes && i < len(tables) {
-			currentBytes += tables[i].Bytes()
-			mtIters = append(mtIters, tables[i].UnboundedIterator())
-			i++
+	iters := make([]common.Iterator, len(tables))
+	for i, table := range tables {
+		iters[i] = table.UnboundedIterator()
+	}
+	iter := common.NewMergedIterator(iters, true)
+
+	newLevels := []*blockBasedLevel{}
+	var pair *common.Pair
+
+	for i, level := range manager.options.Levels {
+		// Compose the new level into the existing iterator
+		levelIter, err := manager.levelUnboundedIterator(i)
+		if err != nil {
+			return nil, err
+		}
+		iter = common.NewMergedIterator([]common.Iterator{iter, levelIter}, true)
+		flush := newFlush(manager.options, level, level.SSTSize*int64(level.MaximumSSTFiles))
+
+		for {
+			// It is possible to have a leftover pair that was not accepted, check for that case first
+			if pair != nil {
+				if !flush.willAccept(pair) {
+					break
+				}
+				err := flush.accept(pair)
+				if err != nil {
+					log.Error().
+						Hex("key", pair.Key).
+						Hex("value", pair.Value).
+						Err(err).
+						Msg("flush failed to accept pair")
+					return nil, err
+				}
+			}
+
+			next, err := iter.Next()
+			if err != nil {
+				return nil, err
+			}
+
+			// If the iterator has been exhausted then we are done
+			if !next {
+				ssts, err := flush.close()
+				if err != nil {
+					log.Error().
+						Int("level", i).
+						Err(err).
+						Msg("flush failed to close")
+					return nil, err
+				}
+				l, err := newLevel(ssts, level)
+				if err != nil {
+					log.Error().
+						Int("level", i).
+						Err(err).
+						Msg("failed to generate new block based level")
+					return nil, err
+				}
+				newLevels = append(newLevels, l)
+
+				manifest, err := newManifest(newLevels, manager.options.Path, manager.manifest.Version)
+				if err != nil {
+					log.Error().
+						Int("version", manager.manifest.Version+1).
+						Str("path", manager.options.Path).
+						Err(err).
+						Msg("failed to generate new manifest")
+					return nil, err
+				}
+				newManager := &BlockBasedSSTManager{levels: newLevels, options: manager.options, manifest: manifest}
+				return newManager, nil
+			}
+			pair, err = iter.Get()
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		tables = tables[i:]
+		// Close the flush and generate the new level
+		ssts, err := flush.close()
+		if err != nil {
+			log.Error().
+				Int("level", i).
+				Err(err).
+				Msg("flush failed to close")
 
-		iter := common.NewMergedIterator(mtIters, true)
-		newManager, err = newManager.flushIter(iter, currentBytes)
+			return nil, err
+		}
+		l, err := newLevel(ssts, level)
+		if err != nil {
+			log.Error().
+				Int("level", i).
+				Err(err).
+				Msg("failed to generate new block based level")
+
+			return nil, err
+		}
+		newLevels = append(newLevels, l)
+	}
+
+	sinkIter, err := manager.levelUnboundedIterator(len(manager.options.Levels))
+	if err != nil {
+		return nil, err
+	}
+	iter = common.NewMergedIterator([]common.Iterator{iter, sinkIter}, false)
+	flush := newFlush(manager.options, manager.options.Sink, NOMAX)
+
+	for {
+		// It is possible to have a leftover pair that was not accepted, check for that case first
+		if pair != nil {
+			if !flush.willAccept(pair) {
+				break
+			}
+			err := flush.accept(pair)
+			if err != nil {
+				log.Error().
+					Hex("key", pair.Key).
+					Hex("value", pair.Value).
+					Err(err).
+					Msg("flush failed to accept pair")
+				return nil, err
+			}
+		}
+
+		next, err := iter.Next()
+		if err != nil {
+			return nil, err
+		}
+		// If the iterator has been exhausted then we are done
+		if !next {
+			break
+		}
+		pair, err = iter.Get()
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	ssts, err := flush.close()
+	if err != nil {
+		log.Error().
+			Str("level", "sink").
+			Err(err).
+			Msg("flush failed to close")
+
+		return nil, err
+	}
+	l, err := newLevel(ssts, manager.options.Sink)
+	if err != nil {
+		log.Error().
+			Str("level", "sink").
+			Err(err).
+			Msg("failed to generate new block based level")
+
+		return nil, err
+	}
+	newLevels = append(newLevels, l)
+
+	manifest, err := newManifest(newLevels, manager.options.Path, manager.manifest.Version)
+	if err != nil {
+		log.Error().
+			Int("version", manager.manifest.Version+1).
+			Str("path", manager.options.Path).
+			Err(err).
+			Msg("failed to generate new manifest")
+
+		return nil, err
+	}
+	newManager := &BlockBasedSSTManager{levels: newLevels, options: manager.options, manifest: manifest}
 	return newManager, nil
 }
 
-func (manager *BlockBasedSSTManager) flushIter(iter common.Iterator, currentBytes int64) (*BlockBasedSSTManager, error) {
-	// No compaction necessary if this is the first time flushing to disk
-	if len(manager.levels) == 0 {
-		ssts, err := Flush(manager.options, manager.options.Levels[0], iter)
-		if err != nil {
-			return nil, err
-		}
-		level := newLevel(ssts, manager.options.Levels[0])
-		manifest, err := newManifest([]*blockBasedLevel{level}, manager.options.Path, manager.manifest.Version)
-		if err != nil {
-			return nil, err
-		}
-		newManager := &BlockBasedSSTManager{levels: []*blockBasedLevel{level}, options: manager.options, manifest: manifest}
-		return newManager, nil
+// Creates an unbounded cached iterator for a single level
+func (manager *BlockBasedSSTManager) levelUnboundedIterator(level int) (common.Iterator, error) {
+	levelConfig, err := manager.options.GetLevel(level)
+	if err != nil {
+		return nil, err
+	}
+	if level < len(manager.levels) {
+		l := manager.levels[level]
+		return NewCachedUnboundedIterator(l.blockCache, l.ssts, levelConfig)
 	} else {
-		levels := manager.levels
-		for i, levelOptions := range manager.options.Levels {
-			var l *blockBasedLevel
-			if i < len(manager.levels) {
-				l = manager.levels[i]
-			}
-			// The remaining entries fit into the current level
-			// or this is the final level (sink), so the flushing process can stop here
-			if i == len(manager.options.Levels)-1 || l == nil || l.bytes(levelOptions)+currentBytes < levelOptions.SSTSize*int64(levelOptions.MaximumSSTFiles) {
-				levelIter, err := NewCachedUnboundedIterator(l.blockCache, l.ssts, levelOptions)
-				if err != nil {
-					return nil, err
-				}
-				mergedIter := common.NewMergedIterator([]common.Iterator{iter, levelIter}, true)
+		return common.EmptyIterator(), nil
+	}
+}
 
-				ssts, err := Flush(manager.options, levelOptions, mergedIter)
-				if err != nil {
-					return nil, err
-				}
-
-				level := newLevel(ssts, levelOptions)
-				if i >= len(manager.levels) {
-					levels = append(levels, level)
-				} else {
-					levels[i] = level
-				}
-				manifest, err := newManifest(levels, manager.options.Path, manager.manifest.Version)
-				if err != nil {
-					return nil, err
-				}
-				newManager := &BlockBasedSSTManager{levels: levels, options: manager.options, manifest: manifest}
-				return newManager, nil
-			} else {
-				ssts, err := Flush(manager.options, levelOptions, iter)
-				if err != nil {
-					return nil, err
-				}
-
-				level := newLevel(ssts, levelOptions)
-				levels[i] = level
-
-				iter, err = NewCachedUnboundedIterator(l.blockCache, l.ssts, levelOptions)
-				if err != nil {
-					return nil, err
-				}
-
-				currentBytes = l.bytes(levelOptions)
-			}
-		}
-		manifest, err := newManifest(levels, manager.options.Path, manager.manifest.Version)
+// Creates a new blockBasedLevel
+func newLevel(ssts []*sst, options config.LevelOptions) (*blockBasedLevel, error) {
+	cache := cache.NewShardedLRUCache(options.GetBlockCacheShards(), options.GetBlockCacheSize())
+	bloomFilters := make([]*common.BloomFilter, len(ssts))
+	for i, sst := range ssts {
+		bloomFilter, err := sst.populateBloomFilter(options.GetBloomFilterSize())
 		if err != nil {
 			return nil, err
 		}
-		newManager := &BlockBasedSSTManager{levels: levels, options: manager.options, manifest: manifest}
-		return newManager, nil
+		bloomFilters[i] = bloomFilter
 	}
+	return &blockBasedLevel{ssts: ssts, bloomFilters: bloomFilters, blockCache: cache}, nil
 }
 
-func (level *blockBasedLevel) bytes(options config.LevelOptions) int64 {
-	bytes := int64(0)
-	for _, sst := range level.ssts {
-		bytes += int64(len(sst.blocks)) * options.GetBlockSize()
-	}
-	return bytes
-}
-
-func newLevel(ssts []*sst, options config.LevelOptions) *blockBasedLevel {
-	cache := cache.NewShardedLRUCache(options.GetBlockCacheShards(), options.GetBlockCacheSize())
-	return &blockBasedLevel{ssts: ssts, blockCache: cache}
-}
-
+// Creates a new manifest, creating entries for each level
 func newManifest(levels []*blockBasedLevel, path string, version int) (*Manifest, error) {
 	manifestLevels := make([][]SST, len(levels))
 	for i, l := range levels {

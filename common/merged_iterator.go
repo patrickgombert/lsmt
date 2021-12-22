@@ -73,10 +73,13 @@ func (iter *mergedIterator) Next() (bool, error) {
 
 // Gets the pair with the least key.
 func (iter *mergedIterator) Get() (*Pair, error) {
-	if iter.next == CLOSED {
+	if iter.next == INIT {
+		return nil, ERR_ITER_GET_INVOKED_ON_INIT
+	} else if iter.next == CLOSED {
 		return nil, nil
+	} else {
+		return iter.peek[iter.next], nil
 	}
-	return iter.peek[iter.next], nil
 }
 
 // Closes all underlying iterators and returns the latest error from the underlying

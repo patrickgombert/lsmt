@@ -158,7 +158,7 @@ func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 }
 
 // Close the lsmt. Failure to call this function before exiting the process might result
-// data loss.
+// data loss. All memtable will be force flushed to disk.
 // Once Close() is invoked all writes will fail.
 func (db *lsmt) Close() error {
 	db.closed = true
@@ -167,7 +167,44 @@ func (db *lsmt) Close() error {
 		Str(Lifecycle, "close").
 		Send()
 
-	return db.forceFlush()
+	for db.flushLock.IsLocked() {
+	}
+
+	tables := make([]*mt.Memtable, len(db.inactiveMemtables)+1)
+	tables[0] = db.activeMemtable
+	for i, inactive := range db.inactiveMemtables {
+		tables[i+1] = inactive
+	}
+
+	hasDataToFlush := false
+	for _, table := range tables {
+		if table.Bytes() > 0 {
+			hasDataToFlush = true
+			break
+		}
+	}
+
+	if hasDataToFlush {
+		log.Info().
+			Int64("active_memtable_bytes", db.activeMemtable.Bytes()).
+			Int64("maximum_memtable_bytes", db.options.MemtableMaximumSize).
+			Int("inactive_memtables", len(db.inactiveMemtables)).
+			Str(Action, "flush").
+			Msg("attempting to force flush memtables")
+
+		_, err := db.sstManager.Flush(tables)
+
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str(Action, "flush").
+				Msg("failed to force flush on shutdown!")
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // Check to see if the active memtable is ready to be flushed to disk. If so,
@@ -192,28 +229,18 @@ func (db *lsmt) checkFlush() {
 				db.inactiveMemtables = []*mt.Memtable{}
 				db.sstManager = newManager
 			}
+
+			if err != nil {
+				log.Error().
+					Str(Action, "flush").
+					Err(err).
+					Send()
+			}
+
 			db.flushLock.Unlock()
+			log.Info().
+				Str(Action, "flush").
+				Msg("releasing flush lock")
 		}()
 	}
-}
-
-// Synchronously force a flush to disk regardless of the size of the active memtable.
-func (db *lsmt) forceFlush() error {
-	for db.flushLock.IsLocked() {
-	}
-	tables := make([]*mt.Memtable, len(db.inactiveMemtables)+1)
-	tables[0] = db.activeMemtable
-	for i, inactive := range db.inactiveMemtables {
-		tables[i+1] = inactive
-	}
-
-	log.Info().
-		Int64("active_memtable_bytes", db.activeMemtable.Bytes()).
-		Int64("maximum_memtable_bytes", db.options.MemtableMaximumSize).
-		Int("inactive_memtables", len(db.inactiveMemtables)).
-		Str(Action, "flush").
-		Msg("attempting to force flush memtables")
-
-	_, err := db.sstManager.Flush(tables)
-	return err
 }

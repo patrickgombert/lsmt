@@ -2,6 +2,7 @@ package sst
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/patrickgombert/lsmt/cache"
@@ -93,7 +94,16 @@ func NewCachedUnboundedIterator(blockCache cache.Cache, ssts []*sst, level confi
 	}
 	reader := bytes.NewReader(b)
 
-	return &cachedIterator{end: nil, level: level, blockCache: blockCache, ssts: ssts, sstIndex: 0, block: reader, blockIndex: 0, closed: false}, nil
+	return &cachedIterator{
+		end:        nil,
+		level:      level,
+		blockCache: blockCache,
+		ssts:       ssts,
+		sstIndex:   0,
+		block:      reader,
+		blockIndex: 0,
+		closed:     false,
+	}, nil
 }
 
 // Returns whether there is a next value. If necessary, calling Next will move the
@@ -101,13 +111,17 @@ func NewCachedUnboundedIterator(blockCache cache.Cache, ssts []*sst, level confi
 // next SST.
 func (iter *cachedIterator) Next() (bool, error) {
 	if iter.closed {
-		return false, nil
+		return false, common.ERR_ITER_CLOSED
 	}
 
 	length := make([]byte, 1)
 	_, err := iter.block.Read(length)
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+
 	// Move to the next block if possible when the end of a block is hit
-	if err == io.EOF || length[0] == 0 {
+	if err == io.EOF {
 		if iter.blockIndex == len(iter.ssts[iter.sstIndex].blocks)-1 {
 			if iter.sstIndex == len(iter.ssts)-1 {
 				iter.closed = true
@@ -124,6 +138,10 @@ func (iter *cachedIterator) Next() (bool, error) {
 				iter.block = bytes.NewReader(b)
 				iter.sstIndex++
 				iter.blockIndex = 0
+				_, err = iter.block.Read(length)
+				if err != nil {
+					return false, err
+				}
 			}
 		} else {
 			sst := iter.ssts[iter.sstIndex]
@@ -136,10 +154,11 @@ func (iter *cachedIterator) Next() (bool, error) {
 			}
 			iter.block = bytes.NewReader(b)
 			iter.blockIndex++
+			_, err = iter.block.Read(length)
+			if err != nil {
+				return false, err
+			}
 		}
-	}
-	if err != nil {
-		return false, err
 	}
 
 	k := make([]byte, length[0])
@@ -154,6 +173,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 
 	_, err = iter.block.Read(length)
 	if err != nil {
+		fmt.Printf("block %v\n", iter.block)
 		return false, err
 	}
 	v := make([]byte, length[0])
@@ -172,7 +192,7 @@ func (iter *cachedIterator) Next() (bool, error) {
 // is invoked.
 func (iter *cachedIterator) Get() (*common.Pair, error) {
 	if iter.closed {
-		return nil, nil
+		return nil, common.ERR_ITER_CLOSED
 	}
 
 	pair := &common.Pair{Key: iter.nextKey, Value: iter.nextValue}

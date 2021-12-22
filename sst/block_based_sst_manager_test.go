@@ -17,10 +17,7 @@ func TestGetFoundKeyNotInCache(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	sink := &config.Sink{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 12}
 	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
-	entry := Entry{Path: ssts[0].Path()}
-	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
-	manager, _ := OpenBlockBasedSSTManager(manifest, options)
+	manager, _ := FlushFrom(options, mt)
 
 	value, _ := manager.Get([]byte{0})
 	if c.Compare([]byte{0}, value) != c.EQUAL {
@@ -36,10 +33,7 @@ func TestGetFoundKeyInCache(t *testing.T) {
 	mt.Write([]byte{0}, []byte{0})
 	sink := &config.Sink{BlockSize: 4, SSTSize: 8, BlockCacheSize: 4, BlockCacheShards: 1, BloomFilterSize: 1000}
 	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
-	entry := Entry{Path: ssts[0].Path()}
-	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
-	manager, _ := OpenBlockBasedSSTManager(manifest, options)
+	manager, _ := FlushFrom(options, mt)
 
 	value, _ := manager.Get([]byte{0})
 	value, _ = manager.Get([]byte{0})
@@ -58,10 +52,7 @@ func TestGetNotFound(t *testing.T) {
 	mt.Write([]byte{2}, []byte{2})
 	sink := &config.Sink{BlockSize: 8, SSTSize: 8, BlockCacheSize: 8, BlockCacheShards: 1}
 	options := &config.Options{Levels: common.EMPTY_LEVELS, Sink: sink, Path: common.TEST_DIR, MemtableMaximumSize: 1048576, KeyMaximumSize: 1024, ValueMaximumSize: 4096}
-	ssts, _ := Flush(options, sink, mt.UnboundedIterator())
-	entry := Entry{Path: ssts[0].Path()}
-	manifest := &Manifest{Levels: [][]Entry{[]Entry{entry}}}
-	manager, _ := OpenBlockBasedSSTManager(manifest, options)
+	manager, _ := FlushFrom(options, mt)
 
 	value, _ := manager.Get([]byte{1})
 	if value != nil {
