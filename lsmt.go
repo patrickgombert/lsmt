@@ -1,15 +1,21 @@
 package lsmt
 
 import (
-	"errors"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/patrickgombert/lsmt/common"
 	c "github.com/patrickgombert/lsmt/comparator"
 	"github.com/patrickgombert/lsmt/config"
 	mt "github.com/patrickgombert/lsmt/memtable"
 	"github.com/patrickgombert/lsmt/sst"
+)
+
+const (
+	Lifecycle = "lifecycle"
+	Action    = "action"
 )
 
 type lsmt struct {
@@ -37,10 +43,16 @@ func Lsmt(options *config.Options) (*lsmt, []error) {
 	if mostRecentManifest == nil {
 		mostRecentManifest = &sst.Manifest{Levels: [][]sst.Entry{}, Version: 0}
 	}
+
 	sstManager, err := sst.OpenBlockBasedSSTManager(mostRecentManifest, options)
 	if err != nil {
 		return nil, []error{err}
 	}
+
+	log.Info().
+		Int("manifest_version", mostRecentManifest.Version).
+		Str(Lifecycle, "open").
+		Send()
 
 	return &lsmt{options: options, activeMemtable: mt.NewMemtable(), inactiveMemtables: []*mt.Memtable{}, sstManager: sstManager, flushLock: common.NewSemaphore(1), closed: false}, nil
 }
@@ -81,19 +93,19 @@ func (db *lsmt) Get(key []byte) ([]byte, error) {
 // been written.
 func (db *lsmt) Write(key, value []byte) error {
 	if db.closed {
-		return errors.New("lsmt is closed")
+		return common.ERR_LSMT_CLOSED
 	}
 	if key == nil || len(key) == 0 {
-		return errors.New("key must not be nil and must not be empty")
+		return common.ERR_KEY_NIL_OR_EMPTY
 	}
 	if len(key) > db.options.KeyMaximumSize {
-		return errors.New("key must not be greater than the maximum key size")
+		return common.ERR_KEY_TOO_LARGE
 	}
 	if value == nil || len(value) == 0 {
-		return errors.New("value must not be nil and must not not be empty")
+		return common.ERR_VAL_NIL_OR_EMPTY
 	}
 	if len(value) > db.options.ValueMaximumSize {
-		return errors.New("value must not be greater than the maximum value size")
+		return common.ERR_VAL_TOO_LARGE
 	}
 
 	db.activeMemtable.Write(key, value)
@@ -105,10 +117,10 @@ func (db *lsmt) Write(key, value []byte) error {
 // Deletes a key/value pair.
 func (db *lsmt) Delete(key []byte) error {
 	if db.closed {
-		return errors.New("lsmt is closed")
+		return common.ERR_LSMT_CLOSED
 	}
 	if key == nil || len(key) == 0 {
-		return errors.New("key must not be nil and must not be empty")
+		return common.ERR_KEY_NIL_OR_EMPTY
 	}
 
 	db.activeMemtable.Write(key, common.Tombstone)
@@ -120,13 +132,13 @@ func (db *lsmt) Delete(key []byte) error {
 // Creates a bounded iterator bounded by the start and end inclusive.
 func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 	if start == nil || len(start) == 0 {
-		return nil, errors.New("start must not be nil and must not be empty")
+		return nil, common.ERR_START_NIL_OR_EMPTY
 	}
 	if end == nil || len(end) == 0 {
-		return nil, errors.New("end must not be nil and must not be empty")
+		return nil, common.ERR_END_NIL_OR_EMPTY
 	}
 	if c.Compare(start, end) != c.LESS_THAN {
-		return nil, errors.New("start must be less than end")
+		return nil, common.ERR_START_GREATER_THAN_END
 	}
 
 	memtable := db.activeMemtable
@@ -150,17 +162,30 @@ func (db *lsmt) Iterator(start, end []byte) (common.Iterator, error) {
 // Once Close() is invoked all writes will fail.
 func (db *lsmt) Close() error {
 	db.closed = true
+
+	log.Info().
+		Str(Lifecycle, "close").
+		Send()
+
 	return db.forceFlush()
 }
 
 // Check to see if the active memtable is ready to be flushed to disk. If so,
 // asynchronously flush to disk.
 func (db *lsmt) checkFlush() {
-	if (db.activeMemtable.Bytes() > db.options.MemtableMaximumSize) && db.flushLock.TryLock() {
+	activeMemtableBytes := db.activeMemtable.Bytes()
+	if (activeMemtableBytes > db.options.MemtableMaximumSize) && db.flushLock.TryLock() {
 		newTable := mt.NewMemtable()
 		unsafeActive := (*unsafe.Pointer)(unsafe.Pointer(&db.activeMemtable))
 		active := atomic.SwapPointer(unsafeActive, unsafe.Pointer(newTable))
 		db.inactiveMemtables = append(db.inactiveMemtables, (*mt.Memtable)(active))
+
+		log.Info().
+			Int64("active_memtable_bytes", activeMemtableBytes).
+			Int64("maximum_memtable_bytes", db.options.MemtableMaximumSize).
+			Str(Action, "flush").
+			Msg("attempting to flush full memtable")
+
 		go func() {
 			newManager, err := db.sstManager.Flush(db.inactiveMemtables)
 			if err == nil && newManager != nil {
@@ -181,6 +206,14 @@ func (db *lsmt) forceFlush() error {
 	for i, inactive := range db.inactiveMemtables {
 		tables[i+1] = inactive
 	}
+
+	log.Info().
+		Int64("active_memtable_bytes", db.activeMemtable.Bytes()).
+		Int64("maximum_memtable_bytes", db.options.MemtableMaximumSize).
+		Int("inactive_memtables", len(db.inactiveMemtables)).
+		Str(Action, "flush").
+		Msg("attempting to force flush memtables")
+
 	_, err := db.sstManager.Flush(tables)
 	return err
 }

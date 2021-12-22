@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -253,7 +252,7 @@ func (iter *sstIterator) Close() error {
 
 func Flush(options *config.Options, level config.LevelOptions, iter common.Iterator) ([]*sst, error) {
 	if iter == nil {
-		return nil, errors.New("unable to flush nil iterator")
+		return nil, common.ERR_NIL_ITERATOR
 	}
 
 	var err error

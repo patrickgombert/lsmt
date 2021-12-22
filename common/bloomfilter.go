@@ -10,8 +10,7 @@ type BloomFilter struct {
 }
 
 // Creates a new instance of a BloomFilter.
-// Accepts the size, in bytes, of the bitfield as well as the number of hashing functions
-// to use. The number of hashing functions must be either 1 or 2.
+// Accepts the size, in bytes, of the bitfield.
 func NewBloomFilter(size uint32) *BloomFilter {
 	return &BloomFilter{bitField: make([]byte, size/8+1)}
 }
